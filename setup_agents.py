@@ -69,8 +69,8 @@ Flow:
 Never promise investment terms. Don't share anything about the reference check."""
 
 
-REF_WELCOME = ("Hi, am I speaking with the right person? I'm an AI assistant making a quick "
-               "reference check call about {{candidate_name}}. Do you have two minutes?")
+REF_WELCOME = ("Hi, is this {{referee_name}}? I'm an AI assistant making a quick "
+               "reference check about {{candidate_name}}. Do you have two minutes?")
 REF_PROMPT = """You are an AI assistant making a brief, warm reference-check call about {{candidate_name}}, who is being considered for {{role}}. You're speaking with someone who worked with {{candidate_first}} at {{company}}. Keep it under 2 minutes, natural and concise, one short question at a time.
 
 Flow:
@@ -84,7 +84,7 @@ Flow:
 If they're busy, offer to call back. Don't share anything beyond the role you're asking about, and never invent facts."""
 
 
-def _agent_body(name: str, welcome: str, prompt: str) -> dict:
+def _agent_body(name: str, welcome: str, prompt: str, voice: str = "alloy") -> dict:
     """The Phase-1 reference agent's config shape, with a new name/welcome/prompt."""
     return {
         "agent_config": {
@@ -105,14 +105,14 @@ def _agent_body(name: str, welcome: str, prompt: str) -> dict:
                     },
                     "synthesizer": {"provider": "openai", "stream": True, "buffer_size": 40,
                                     "audio_format": "wav",
-                                    "provider_config": {"model": "tts-1", "voice": "alloy",
+                                    "provider_config": {"model": "tts-1", "voice": voice,
                                                         "speed": 1.0}},
                     "transcriber": {"provider": "deepgram", "model": "nova-2",
                                     "language": "en", "stream": True, "endpointing": 500},
                     "input": {"provider": "twilio", "format": "wav"},
                     "output": {"provider": "twilio", "format": "wav"},
                 },
-                "task_config": {"call_terminate": 120, "hangup_after_silence": 20,
+                "task_config": {"call_terminate": 600,
                                 "optimize_latency": True},
             }],
         },
@@ -121,9 +121,9 @@ def _agent_body(name: str, welcome: str, prompt: str) -> dict:
 
 
 AGENTS = [
-    ("BACKCHANNEL_VC_AGENT_ID", VC_AGENT_NAME, VC_WELCOME, VC_PROMPT),
-    ("BACKCHANNEL_FOUNDER_AGENT_ID", FOUNDER_AGENT_NAME, FOUNDER_WELCOME, FOUNDER_PROMPT),
-    ("BACKCHANNEL_AGENT_ID", REF_AGENT_NAME, REF_WELCOME, REF_PROMPT),
+    ("BACKCHANNEL_VC_AGENT_ID", VC_AGENT_NAME, VC_WELCOME, VC_PROMPT, "echo"),
+    ("BACKCHANNEL_FOUNDER_AGENT_ID", FOUNDER_AGENT_NAME, FOUNDER_WELCOME, FOUNDER_PROMPT, "nova"),
+    ("BACKCHANNEL_AGENT_ID", REF_AGENT_NAME, REF_WELCOME, REF_PROMPT, "alloy"),
 ]
 
 
@@ -148,8 +148,8 @@ def main() -> int:
     existing = {a.get("agent_name"): a.get("id")
                 for a in (_request("GET", "/v2/agent/all") or []) if isinstance(a, dict)}
     lines = []
-    for env_key, name, welcome, prompt in AGENTS:
-        body = _agent_body(name, welcome, prompt)
+    for env_key, name, welcome, prompt, voice in AGENTS:
+        body = _agent_body(name, welcome, prompt, voice)
         agent_id = existing.get(name)
         if agent_id and args.update:
             _request("PUT", f"/v2/agent/{agent_id}", body)
@@ -163,7 +163,10 @@ def main() -> int:
             print(f"created  {name}: {agent_id}", file=sys.stderr)
         lines.append(f"{env_key}={agent_id}")
     print("\n# add to .env.local:")
-    print("\n".join(lines))
+    print("\n".join(x for x in lines if not x.startswith("BACKCHANNEL_AGENT_ID=")))
+    print("\n# optional — the role-aware reference agent. Enable it only after one real test")
+    print("# call; without it the proven Phase-1 reference agent is used (it ignores the role):")
+    print("\n".join("# " + x for x in lines if x.startswith("BACKCHANNEL_AGENT_ID=")))
     return 0
 
 

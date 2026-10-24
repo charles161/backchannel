@@ -95,6 +95,12 @@ def _err(status: int, code: str, detail: str, **extra) -> JSONResponse:
     return JSONResponse({"error": code, "detail": detail, **extra}, status_code=status)
 
 
+def _line(v) -> str:
+    """A form value as one line of text (no CR/LF: names land in emails and .ics)."""
+    t = "".join(ch if ch.isprintable() else " " for ch in str(v or ""))
+    return " ".join(t.split())
+
+
 def _token_ok(body: dict, request: Request) -> bool:
     if not DEMO_TOKEN:
         return True
@@ -152,10 +158,10 @@ async def start_run(request: Request):
 
     pid = pipeline._person_id(body.get("founder_person_id"))
     inputs = {
-        "vc_name": str(body.get("vc_name") or "").strip()[:120],
+        "vc_name": _line(body.get("vc_name"))[:120],
         "vc_phone": str(body.get("vc_phone") or "").strip()[:40],
-        "founder_name": pipeline.canonical_founder(str(body.get("founder_name") or "")[:120]),
-        "founder_company": str(body.get("founder_company") or "").strip()[:120],
+        "founder_name": pipeline.canonical_founder(_line(body.get("founder_name"))[:120]),
+        "founder_company": _line(body.get("founder_company"))[:120],
         # what the VC is hiring/funding for: steers the call questions + the fit verdict
         "role": candidates.normalize_role(body.get("role")),
         # a candidate picked from POST /search: resolve exactly this person
@@ -230,11 +236,11 @@ async def search(request: Request):
         return _err(400, "missing_role", "Describe the role or thesis to search for.",
                     message="Describe the role or thesis to search for.", **empty)
     try:
-        limit = int(body.get("limit") or candidates.DEFAULT_LIMIT)
-    except (TypeError, ValueError):
-        limit = candidates.DEFAULT_LIMIT
-    try:
         client = pipeline.make_crust()
+        try:
+            limit = int(body.get("limit") or candidates.DEFAULT_LIMIT)
+        except (TypeError, ValueError, OverflowError):
+            limit = candidates.DEFAULT_LIMIT
         if not candidates._cache_path(role).exists() and _rate_limited(ip, _search_hits):
             return _err(429, "rate_limited",
                         f"Too many searches in a minute (max {_RATE_MAX}). Wait a moment.",

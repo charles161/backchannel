@@ -12,10 +12,15 @@ whether they actually match the role (an investor surfacing for "founder" doesn'
 matches are listed first, otherwise Crustdata's order is kept (hard deadline; a
 deterministic line from the profile, and Crustdata's order, if Haiku is slow).
 
+Each SHOWN candidate also carries a DISPLAY-ONLY masked `email` + `phone` from
+Crustdata contact-enrich (contacts.py: disk-cached per person, so a repeat costs
+nothing; a masked placeholder when there's no real contact). They are never dialed:
+picking a candidate sends only their name, company and person_id.
+
 Read-only and credit-conscious: the Crustdata response is disk-cached by the
 client (same role = same request body = free), and the assembled list is cached
-under .cache/candidates-*.json so a repeat skips Haiku too. Never raises: every
-failure is an empty list + a human message.
+under .cache/candidates-*.json (without the contact fields) so a repeat skips Haiku
+too. Never raises: every failure is an empty list + a human message.
 """
 
 from __future__ import annotations
@@ -29,7 +34,9 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
 from pathlib import Path
 from typing import Any
 
+import contacts
 import gateway
+import placeholder_contacts
 from crust import CrustError
 from report import _parse_json
 
@@ -41,6 +48,7 @@ FIELDS = ["crustdata_person_id", "fit", "basic_profile",
           "experience.employment_details.current",
           "social_handles.professional_network_identifier.profile_url"]
 _FIT_RANK = {"strong": 0, "possible": 1, "weak": 2}
+_CONTACT_KEYS = ("email", "phone", "contact_source")
 
 # role words that map cleanly onto a current-title filter (a recall/ranking signal
 # in Crustdata's default "managed" mode, not a hard constraint)
@@ -60,7 +68,8 @@ def _log(msg: str) -> None:
 
 
 def normalize_role(role: Any) -> str:
-    return " ".join(str(role or "").split())[:300]
+    t = "".join(ch if ch.isprintable() else " " for ch in str(role or ""))
+    return " ".join(t.split())[:300]
 
 
 def title_filters(role: str) -> list[dict]:
@@ -100,6 +109,26 @@ def _candidate(p: dict) -> dict | None:
         "fit": p.get("fit"),                       # Crustdata relevance tier
         "person_id": p.get("crustdata_person_id"),  # pass back as founder_person_id
     }
+
+
+def _placeholder(c: dict) -> dict:
+    return placeholder_contacts.for_person(c.get("name"), c.get("company"),
+                                           c.get("person_id"), masked_email=True)
+
+
+def _without_contacts(c: dict) -> dict:
+    return {k: v for k, v in c.items() if k not in _CONTACT_KEYS}
+
+
+def _add_contacts(client, shown: list[dict]) -> dict:
+    """Masked email/phone on each SHOWN candidate, in place: real contact-enrich (one
+    lookup per person, ever — it's disk-cached), else a masked placeholder. Returns
+    the contact stats."""
+    got, stats = contacts.display(client, shown, _placeholder,
+                                  id_key="person_id", url_key="linkedin")
+    for c, ct in zip(shown, got):
+        c.update(ct)
+    return stats
 
 
 def _fallback_why(c: dict) -> str:
@@ -175,7 +204,9 @@ def _empty(role: str, message: str, source: str, **extra) -> dict:
 
 def search(client, role: str, limit: int = DEFAULT_LIMIT) -> dict:
     """role -> {"role", "candidates": [{name,title,company,linkedin,headline,why_fit,
-    fit,location,person_id}], "count", "message", "source", "cached"}."""
+    fit,location,person_id,email,phone,contact_source}], "count", "message", "source",
+    "cached", "contacts"}. email/phone are masked and display-only (see _add_contacts);
+    only the `limit` candidates returned are looked up."""
     role = normalize_role(role)
     limit = max(1, min(int(limit or DEFAULT_LIMIT), MAX_RESULTS))
     live = bool(getattr(client, "live", False))
@@ -183,11 +214,14 @@ def search(client, role: str, limit: int = DEFAULT_LIMIT) -> dict:
     if path.exists():
         try:
             data = json.loads(path.read_text())
-            cands = data.get("candidates") or []
-            return {**data, "candidates": cands[:limit], "count": len(cands[:limit]),
-                    "source": "cache", "cached": True}
-        except (OSError, ValueError):
-            pass
+            # a list cached before contact-enrich carries placeholders: never reuse them
+            shown = [_without_contacts(c) for c in data.get("candidates") or []][:limit]
+        except (OSError, ValueError, AttributeError):
+            shown = None
+        if shown is not None:
+            stats = _add_contacts(client, shown)
+            return {**data, "candidates": shown, "count": len(shown), "source": "cache",
+                    "cached": True, "contacts": stats}
 
     filters = title_filters(role)
     try:
@@ -233,8 +267,12 @@ def search(client, role: str, limit: int = DEFAULT_LIMIT) -> dict:
     if why_source == "haiku":   # don't pin a degraded list; the raw response is cached anyway
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(json.dumps(data, indent=2))
+            tmp = path.with_suffix(f".{os.getpid()}.tmp")
+            tmp.write_text(json.dumps(data, indent=2))
+            os.replace(tmp, path)   # atomic
         except OSError:
             pass
-    return {**data, "candidates": cands[:limit], "count": len(cands[:limit]),
-            "cached": False}
+    shown = [dict(c) for c in cands[:limit]]
+    stats = _add_contacts(client, shown)
+    return {**data, "candidates": shown, "count": len(shown), "cached": False,
+            "contacts": stats}

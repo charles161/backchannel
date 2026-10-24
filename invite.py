@@ -16,8 +16,10 @@ covers everything after that).
 
 Config comes from the environment ONLY: RESEND_API_KEY (send-only key),
 RESEND_FROM, BACKCHANNEL_FOUNDER_EMAIL (Resend test mode can only deliver to the
-account owner's address). Optional: BACKCHANNEL_VC_EMAIL (the invite's organizer;
-defaults to the From address), BACKCHANNEL_TZ (default Asia/Kolkata).
+account owner's address). Optional: BACKCHANNEL_VC_EMAIL (the invite's organizer
+address; defaults to the From address — the VC's name is the organizer CN),
+BACKCHANNEL_TZ (default Asia/Kolkata), BACKCHANNEL_EMAIL=0 (turn sending off, e.g.
+on a public mock demo where every booked run would otherwise send one).
 """
 
 from __future__ import annotations
@@ -37,11 +39,23 @@ import scheduling
 RESEND_URL = "https://api.resend.com/emails"
 MEETING_MINUTES = 30
 ICS_FILENAME = "invite.ics"
-_MIN_LEAD = dt.timedelta(hours=1)   # a slot less than an hour away rolls to next week
+_HTTP_TIMEOUT = (5.0, 10.0)   # connect, read — kept under the pipeline's send deadline
 
 
 class InviteError(RuntimeError):
-    """A failed send (the API key is never attached)."""
+    """A failed send (the API key is never attached). outcome_unknown=True when the
+    request may have reached Resend (timeout / dropped) — safe to retry, same key."""
+
+    def __init__(self, msg: str, *, outcome_unknown: bool = False):
+        super().__init__(msg)
+        self.outcome_unknown = outcome_unknown
+
+
+def _clean(text: str | None, limit: int = 120) -> str:
+    """One line of plain text: no CR/LF/control chars (they'd inject .ics properties
+    or email headers), whitespace collapsed."""
+    t = "".join(ch if ch.isprintable() else " " for ch in str(text or ""))
+    return " ".join(t.split())[:limit]
 
 
 def _tz() -> ZoneInfo:
@@ -51,21 +65,39 @@ def _tz() -> ZoneInfo:
         return ZoneInfo("Asia/Kolkata")
 
 
+def enabled() -> bool:
+    return os.environ.get("BACKCHANNEL_EMAIL", "1").strip().lower() not in (
+        "0", "false", "no", "off")
+
+
+def _addr(raw: str) -> str:
+    """'Name <a@b.com>' or 'a@b.com' -> 'a@b.com' ('' if it isn't an address)."""
+    a = parseaddr(_clean(raw, 320))[1]
+    return a if "@" in a else ""
+
+
 def config() -> dict | None:
-    """{key, sender, to, organizer} or None when Resend isn't configured."""
+    """{key, sender, to, organizer} or None when sending is off / not configured."""
+    if not enabled():
+        return None
     key = os.environ.get("RESEND_API_KEY", "").strip()
     sender = os.environ.get("RESEND_FROM", "").strip()
-    to = os.environ.get("BACKCHANNEL_FOUNDER_EMAIL", "").strip()
+    to = _addr(os.environ.get("BACKCHANNEL_FOUNDER_EMAIL", ""))
     if not (key and sender and to):
         return None
-    organizer = (os.environ.get("BACKCHANNEL_VC_EMAIL", "").strip()
-                 or parseaddr(sender)[1] or sender)
+    organizer = _addr(os.environ.get("BACKCHANNEL_VC_EMAIL", "")) or _addr(sender) or to
     return {"key": key, "sender": sender, "to": to, "organizer": organizer}
 
 
-def missing_config() -> list[str]:
-    return [k for k in ("RESEND_API_KEY", "RESEND_FROM", "BACKCHANNEL_FOUNDER_EMAIL")
-            if not os.environ.get(k, "").strip()]
+def unavailable_reason() -> str:
+    """Why config() is None, for the run result."""
+    if not enabled():
+        return "Email is turned off on this server (BACKCHANNEL_EMAIL=0)."
+    missing = [k for k in ("RESEND_API_KEY", "RESEND_FROM", "BACKCHANNEL_FOUNDER_EMAIL")
+               if not os.environ.get(k, "").strip()]
+    if not missing and not _addr(os.environ.get("BACKCHANNEL_FOUNDER_EMAIL", "")):
+        return "Email isn't configured on this server (BACKCHANNEL_FOUNDER_EMAIL isn't an address)."
+    return "Email isn't configured on this server (missing " + ", ".join(missing) + ")."
 
 
 # ---------------------------------------------------------------------------
@@ -77,8 +109,10 @@ _DAY_RE = re.compile(r"\b(monday|tuesday|tues|wednesday|weds|thursday|thurs|frid
 
 def meeting_window(time_str: str | None, created_at: float | None) -> tuple[dt.datetime, dt.datetime]:
     """The soonest future occurrence of the booked slot, measured from when the run
-    was created (so a resume a day later resolves to the same date). A slot with no
-    clock time gets the slot's default (afternoon -> 3 PM); no weekday -> tomorrow."""
+    was created (so a resume a day later resolves to the same date): today if the
+    weekday is today and the time is still ahead, else the next such weekday. A slot
+    with no clock time gets the slot's default (afternoon -> 3 PM); no weekday ->
+    tomorrow."""
     tz = _tz()
     ref = dt.datetime.fromtimestamp(created_at or 0, tz) if created_at else dt.datetime.now(tz)
     concrete = scheduling.default_time_for(time_str) or time_str or ""
@@ -91,7 +125,7 @@ def meeting_window(time_str: str | None, created_at: float | None) -> tuple[dt.d
         days = 1
     start = (ref + dt.timedelta(days=days)).replace(hour=clock[0], minute=clock[1],
                                                     second=0, microsecond=0)
-    if start - ref < _MIN_LEAD:
+    if start <= ref:
         start += dt.timedelta(days=7 if dm else 1)
     return start, start + dt.timedelta(minutes=MEETING_MINUTES)
 
@@ -110,12 +144,14 @@ def human_when(start: dt.datetime, end: dt.datetime) -> str:
 # .ics (RFC 5545)
 # ---------------------------------------------------------------------------
 def _esc(text: str) -> str:
-    return (str(text).replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,")
-            .replace("\r\n", "\\n").replace("\n", "\\n"))
+    t = str(text).replace("\r\n", "\n").replace("\r", "\n")
+    t = "".join(ch if ch.isprintable() or ch == "\n" else " " for ch in t)
+    return (t.replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,")
+            .replace("\n", "\\n"))
 
 
 def _cn(text: str) -> str:
-    return '"' + str(text).replace('"', "'") + '"'
+    return '"' + _clean(text).replace('"', "'") + '"'
 
 
 def _fold(line: str) -> str:
@@ -179,9 +215,10 @@ def compose(*, cfg: dict, run_id: str, created_at: float | None, meeting_time: s
     """The complete Resend payload + a public summary. Pure: same inputs, same bytes."""
     start, end = meeting_window(meeting_time, created_at)
     stamp = dt.datetime.fromtimestamp(created_at or 0, dt.timezone.utc)
-    vc = (vc_name or "").strip() or "An investor"
-    vc_label = f"{vc}, an investor," if (vc_name or "").strip() else "An investor"
-    founder = (founder_name or "").strip() or "there"
+    vc_name, founder_name, company = _clean(vc_name), _clean(founder_name), _clean(company)
+    vc = vc_name or "An investor"
+    vc_label = f"{vc}, an investor," if vc_name else "An investor"
+    founder = founder_name or "there"
     first = founder.split(" ")[0]
     when = human_when(start, end)
     about = f"to talk about {company}" if company else "with you"
@@ -270,18 +307,24 @@ def compose(*, cfg: dict, run_id: str, created_at: float | None, meeting_time: s
     return {"payload": payload, "summary": summary, "ics": ics}
 
 
-def send(cfg: dict, payload: dict, idempotency_key: str, *, timeout: float = 15.0) -> dict:
+def send(cfg: dict, payload: dict, idempotency_key: str) -> dict:
     """POST the email to Resend. Returns {"id": ...}; raises InviteError on failure."""
     try:
         resp = requests.post(
-            RESEND_URL, json=payload, timeout=timeout,
+            RESEND_URL, json=payload, timeout=_HTTP_TIMEOUT,
             headers={"Authorization": f"Bearer {cfg['key']}",
                      "Content-Type": "application/json",
                      "Idempotency-Key": idempotency_key[:256]})
+    except requests.ConnectTimeout:
+        raise InviteError("Resend unreachable: ConnectTimeout") from None   # never sent
     except requests.RequestException as e:
-        raise InviteError(f"Resend unreachable: {type(e).__name__}") from None
+        raise InviteError(f"Resend unreachable: {type(e).__name__}",
+                          outcome_unknown=True) from None
     if resp.status_code not in (200, 201):
-        raise InviteError(f"Resend -> HTTP {resp.status_code}: {resp.text[:300]}")
+        # 409 concurrent_idempotent_requests = the first attempt is still in flight
+        unknown = resp.status_code >= 500 or "concurrent_idempotent" in resp.text
+        raise InviteError(f"Resend -> HTTP {resp.status_code}: {resp.text[:300]}",
+                          outcome_unknown=unknown)
     try:
         data = resp.json()
     except ValueError:

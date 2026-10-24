@@ -113,8 +113,10 @@ class Crust:
             data = resp.json()
         except ValueError:
             raise CrustError(f"{endpoint} -> HTTP 200 with a non-JSON body") from None
-        if cache:
-            path.write_text(json.dumps(data, indent=2))
+        if cache:   # atomic: a crash or a concurrent writer never leaves half a file
+            tmp = path.with_suffix(f".{os.getpid()}.{time.monotonic_ns()}.tmp")
+            tmp.write_text(json.dumps(data, indent=2))
+            os.replace(tmp, path)
         return data
 
     # ---- public API ------------------------------------------------------

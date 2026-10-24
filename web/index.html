@@ -164,22 +164,41 @@
   .intake[data-mode=compact] .cands{margin-top:28px}
   .intake[data-mode=compact] .cands-h h2{font-size:30px}
 
-  /* candidates — the same ranked treatment as the references */
+  /* candidates — a ranked list of profile cards */
   .cands{min-width:0;animation:fade .3s var(--ease) both}
   .cands-h h2{font:400 clamp(32px,3.2vw,46px)/1.04 var(--serif);letter-spacing:-.015em;max-width:20ch;text-wrap:balance}
   .cands-h h2 em{font-style:italic}
   .cands-h p{margin-top:12px;font-size:15.5px;color:var(--ink2);max-width:36em;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-  .clist{list-style:none;margin:26px 0 0;padding:0;border-top:1px solid var(--rule2)}
-  .cand{display:grid;grid-template-columns:30px minmax(0,1fr) auto;column-gap:16px;align-items:start;padding:18px 0;border-bottom:1px solid var(--rule);cursor:pointer;animation:rise .45s var(--ease) both;animation-delay:calc(var(--i,0)*60ms)}
-  .c-rk{font:400 22px/1.1 var(--serif);color:var(--faint)}
+  .clist{list-style:none;margin:26px 0 0;padding:0;display:grid;gap:12px}
+  .intake[data-mode=compact] .clist{grid-template-columns:repeat(auto-fill,minmax(440px,1fr))}
+  .cand{display:grid;grid-template-columns:30px minmax(0,1fr);column-gap:14px;padding:20px 22px 16px 18px;cursor:pointer;
+    background:var(--surface);border:1px solid var(--rule);border-radius:12px;box-shadow:0 1px 2px rgba(20,20,18,.04);
+    transition:border-color .15s,box-shadow .2s var(--ease);animation:rise .45s var(--ease) both;animation-delay:calc(var(--i,0)*60ms)}
+  .cand:hover{border-color:var(--rule2);box-shadow:0 1px 2px rgba(20,20,18,.05),0 18px 36px -26px rgba(20,20,18,.3)}
+  .c-rk{font:400 26px/1 var(--serif);color:var(--faint);padding-top:1px}
   .cand:first-child .c-rk{color:var(--ink)}
-  .c-name{font:400 24px/1.12 var(--serif);letter-spacing:-.005em}
+  .c-body{min-width:0}
+  .c-hd{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+  .c-id{min-width:0}
+  .c-name{font:400 27px/1.08 var(--serif);letter-spacing:-.008em;overflow-wrap:anywhere}
   .cand:hover .c-name{text-decoration:underline;text-decoration-color:var(--rule2);text-underline-offset:4px;text-decoration-thickness:1px}
-  .c-fit{margin-left:8px;font:400 12.5px/1 var(--sans);color:var(--muted);vertical-align:3px}
-  .c-role{margin-top:4px;font-size:14px;color:var(--ink2)}
-  .c-role a{color:var(--ink2);text-decoration:underline;text-decoration-color:var(--rule2);text-underline-offset:3px}
-  .c-why{margin-top:8px;font-size:14.5px;line-height:1.5;color:var(--muted);max-width:56ch}
-  .c-go{align-self:center}
+  .c-role{margin-top:5px;font-size:14.5px;line-height:1.4;color:var(--ink2)}
+  .c-role b{font-weight:500;color:var(--ink)}
+  .c-meta{margin-top:2px;font-size:13.5px;color:var(--muted)}
+  .c-meta a{color:var(--ink2);text-decoration:underline;text-decoration-color:var(--rule2);text-underline-offset:3px;white-space:nowrap}
+  .c-meta a:hover{text-decoration-color:var(--ink)}
+  .c-tier{flex:none;display:inline-flex;align-items:center;gap:7px;padding-top:7px;font-size:12.5px;color:var(--muted);white-space:nowrap}
+  .c-tier i{width:7px;height:7px;border-radius:50%;background:var(--rule2)}
+  .c-tier.strong{color:var(--live);font-weight:500}.c-tier.strong i{background:var(--live)}
+  .c-tier.possible i{background:var(--faint)}
+  .c-why{margin-top:13px;padding-left:12px;border-left:2px solid var(--rule2);font:italic 400 17px/1.38 var(--serif);color:var(--ink2);max-width:60ch}
+  .c-foot{display:flex;align-items:flex-end;justify-content:space-between;gap:12px 20px;flex-wrap:wrap;margin-top:15px;padding-top:13px;border-top:1px solid var(--rule)}
+  .c-go{flex:none}
+  /* contact lines (masked, display-only): quiet, selectable, never links */
+  .ct{list-style:none;margin:0;padding:0;display:grid;gap:4px;min-width:0;font-size:13.5px;line-height:1.3;color:var(--ink2);cursor:text}
+  .ct li{display:flex;align-items:center;gap:9px;min-width:0}
+  .ct svg{flex:none;width:13px;height:13px;fill:none;stroke:var(--faint);stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}
+  .ct span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;user-select:all}
 
   /* =========================== WORKSPACE =========================== */
   .ws{display:grid;grid-template-columns:clamp(290px,25vw,344px) minmax(0,1fr);column-gap:clamp(32px,4.6vw,72px);align-items:start;padding-top:20px;padding-bottom:24px;
@@ -210,6 +229,7 @@
   .p-sec>h3{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;font-size:11px;font-weight:500;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
   .p-sec>h3 span{font-size:12.5px;font-weight:400;letter-spacing:0;text-transform:none;color:var(--faint)}
   .hist,.refs{list-style:none;margin:0;padding:0}
+  .hist,.axis{margin-left:13px;margin-right:13px}   /* = ref card border + padding: every track shares one axis */
   .wait{display:flex;align-items:center;gap:10px;padding:8px 0;font-size:13.5px;color:var(--muted)}
   .wait.idle{color:var(--faint)}
   .wait.idle .spin{animation:none;border-color:var(--rule2);border-style:dashed}
@@ -236,25 +256,42 @@
   .grow-in .trk i{animation:grow .8s var(--ease) both;animation-delay:calc(var(--i,0)*70ms)}
   .grow-in .hr,.grow-in .ref{animation:fade .45s var(--ease) both;animation-delay:calc(var(--i,0)*70ms)}
 
-  .refs-h{display:flex;justify-content:space-between;padding:0 0 6px 24px;font-size:11.5px;color:var(--faint)}
-  .ref{display:grid;grid-template-columns:24px minmax(0,1fr);padding:9px 0 10px;border-top:1px solid var(--rule)}
+  /* reference cards: #1 is the one the agent calls, #2–#4 are compact reserves */
+  .refs-h{display:flex;justify-content:space-between;padding:0 2px 7px;font-size:11.5px;color:var(--faint)}
+  .refs{display:grid;gap:8px}
+  .ref{display:grid;grid-template-columns:22px minmax(0,1fr);column-gap:8px;padding:10px 12px;border:1px solid var(--rule);border-radius:10px;background:var(--surface)}
+  .ref>.ref-f,.ref>.ref-dl,.ref>.ct{grid-column:2}
   .ref>.trk{grid-column:1/-1}
-  .ref>.ref-f{grid-column:2}
   .ref-rk{font:400 20px/1.05 var(--serif);color:var(--faint)}
-  .ref.top .ref-rk{color:var(--ink)}
   .ref-h{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
-  .ref-t{font-size:14.5px;font-weight:500;line-height:1.3;color:var(--ink2)}
-  .ref.top .ref-t{color:var(--ink)}
+  .ref-t{min-width:0;font-size:14px;font-weight:500;line-height:1.3;color:var(--ink2)}
   .ref-sc{flex:none;font-size:15px;font-weight:500;color:var(--ink2)}
-  .ref.top .ref-sc{color:var(--ink)}
-  .ref-m{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-top:2px;font-size:13px;color:var(--muted)}
-  .ref-st{flex:none;display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--faint);white-space:nowrap}
-  .ref-st.live{color:var(--live);font-weight:500}
-  .ref-st.done{color:var(--ink2)}
+  .ref-m{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-top:2px;font-size:12.5px;color:var(--muted)}
+  .ref-m>span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ref-st{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:500;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);white-space:nowrap}
+  .ref-st.live{color:var(--live)}
+  .ref-st.done{color:var(--ink)}
+  .ref .trk{margin-top:8px}
   .ref:not(.top) .trk i{background:#C9C4B8}
-  .ref.top .trk i{background:var(--ink)}
-  .ref-f{margin-top:5px;font-size:12.5px;color:var(--faint)}
+  .ref-f{margin-top:6px;font-size:12.5px;color:var(--faint)}
+  .ref-f span{white-space:nowrap}
   .ref-f b{font-weight:500;color:var(--muted)}
+  .ref-x{flex:none;font-size:12.5px;color:var(--muted)}
+  .ref:not(.top) .ct{display:none;margin-top:8px;padding-top:8px;border-top:1px solid var(--rule);font-size:12.5px}
+  .ref.open .ct{display:grid}
+  .ref.top{grid-template-columns:24px minmax(0,1fr);padding:13px 12px 14px;background:var(--paper);border-color:var(--rule2)}
+  .ref.top .ref-top{grid-column:1/-1;margin-bottom:7px}
+  .ref.top .ref-rk{font-size:24px;color:var(--ink)}
+  .ref.top .ref-t{font:400 21px/1.12 var(--serif);letter-spacing:-.005em;color:var(--ink)}
+  .ref.top .ref-sc{font:400 30px/.9 var(--serif);letter-spacing:-.01em;color:var(--ink)}
+  .ref.top .ref-m{font-size:13px;color:var(--ink2)}
+  .ref.top .trk i{background:var(--ink)}
+  .ref-dl{margin-top:10px;border-top:1px solid var(--rule)}
+  .ref-dl>div{display:grid;grid-template-columns:62px minmax(0,1fr);gap:8px;padding:6px 0;border-bottom:1px solid var(--rule)}
+  .ref-dl dt{padding-top:2px;font-size:10.5px;font-weight:500;letter-spacing:.09em;text-transform:uppercase;color:var(--faint)}
+  .ref-dl dd{font-size:13px;line-height:1.4;color:var(--ink)}
+  .ref-dl dd .sub{display:block;color:var(--muted);font-size:12.5px}
+  .ref.top .ct{margin-top:10px;font-size:13px}
   .p-note{margin-top:12px;font-size:12.5px;line-height:1.5;color:var(--faint)}
   .p-more{display:none;margin-top:12px;font-size:13.5px}
 
@@ -428,6 +465,7 @@
     .intake[data-mode=compact] .fs-brief{grid-column:1/-1}
   }
   @media (max-width:960px){
+    .intake[data-mode=compact] .clist{grid-template-columns:1fr}
     .intake[data-mode=home] .intake-grid{grid-template-columns:1fr;grid-template-areas:"pitch" "form" "below";row-gap:40px}
     .intake.has-cands[data-mode=home] .intake-grid{grid-template-areas:"form" "cands"}
     .panel{max-width:620px}
@@ -457,8 +495,10 @@
     .scores{grid-template-columns:1fr;gap:18px}
     .meet{grid-template-columns:1fr}
     .alert{flex-direction:column;align-items:flex-start}
-    .cand{grid-template-columns:26px minmax(0,1fr)}
-    .c-go{grid-column:2;justify-self:start;margin-top:12px}
+    .cand{grid-template-columns:24px minmax(0,1fr);padding:16px 16px 14px 14px}
+    .c-hd{flex-direction:column;gap:2px}
+    .c-tier{padding-top:4px}
+    .c-go{width:100%}
   }
   @media (prefers-reduced-motion:reduce){
     *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important}
@@ -569,7 +609,7 @@
         <div id="pRefsHead"></div>
         <ol class="refs" id="pRefs"></ol>
         <button type="button" class="link p-more" id="pMore" aria-expanded="false">Show work history and every reference</button>
-        <p class="p-note" id="pNote" hidden>Score is months worked side by side × seniority. Only the top match is called; the rest are held in reserve. Work history from Crustdata.</p>
+        <p class="p-note" id="pNote" hidden>Score is months worked side by side × seniority. Only the top match is called; the rest are held in reserve. Contact details are masked and display-only — the agent never dials them. Work history from Crustdata.</p>
       </section>
     </aside>
 
@@ -629,6 +669,7 @@ const ICON = {
   check: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.9 8.4l2.7 2.7 5.6-5.8"/></svg>',
   phone: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.1 1.6c.5-.3 1.1-.2 1.4.3l1.4 2.2c.3.4.2 1-.1 1.3l-.9.9c.7 1.5 1.9 2.7 3.4 3.4l.9-.9c.4-.3.9-.4 1.3-.1l2.2 1.4c.5.3.6.9.3 1.4l-.8 1.2c-.5.7-1.4 1-2.2.8C7.4 12.6 3.4 8.6 2.5 5c-.2-.8.1-1.7.8-2.2z"/></svg>',
   meter: '<span class="meter" aria-hidden="true"><i></i><i></i><i></i><i></i></span>',
+  mail: '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="3.5" width="12" height="9" rx="1.6"/><path d="M2.6 4.6L8 8.6l5.4-4"/></svg>',
 };
 const stripEmoji = s => String(s || '').replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}\u{200D}]/gu, '').replace(/\s{2,}/g, ' ').trim();
 // "Simulated" is said once per run header and once per call — never on every line.
@@ -640,6 +681,17 @@ const prettyVerdict = s => String(s || '').replace(/^(FUND|LEAN|PASS)\b/, m => V
 const safeUrl = u => { u = String(u || '').trim(); if (!u) return ''; if (/^https?:\/\//i.test(u)) return u; if (/^(www\.)?linkedin\.com\//i.test(u)) return 'https://' + u; return ''; };
 const normCo = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
 const noStop = s => String(s || '').trim().replace(/[.!?]+$/, '');
+
+// Contact lines (masked email + phone from the server). DISPLAY-ONLY: never
+// links, never sent back — a pick posts only name, company and person_id, and every call
+// dials a configured number on the server.
+function contactHtml(x) {
+  const rows = [];
+  if (x.email) rows.push(`<li title="Masked email (display only)">${ICON.mail}<span>${esc(x.email)}</span></li>`);
+  if (x.phone) rows.push(`<li title="Masked number (display only, never dialed)">${ICON.phone}<span class="num">${esc(x.phone)}</span></li>`);
+  return rows.length ? `<ul class="ct" aria-label="Contact (masked)">${rows.join('')}</ul>` : '';
+}
+const fmtScore = sc => (sc == null ? '—' : Number.isInteger(sc) ? String(sc) : sc.toFixed(1));
 
 function fmtClock(sec) {
   sec = Math.max(0, Math.floor(sec));
@@ -964,6 +1016,9 @@ function normCands(d) {
     fit: typeof x.fit === 'string' ? x.fit : '',          // Crustdata relevance tier: strong | possible | weak
     pid: x.person_id != null ? String(x.person_id) : '',  // sent back as founder_person_id: resolve exactly this person
     score: typeof x.score === 'number' ? x.score : (typeof x.fit_score === 'number' ? x.fit_score : null),
+    fits: typeof x.matches_role === 'boolean' ? x.matches_role : null,   // false: the model judged them off-brief
+    email: typeof x.email === 'string' ? x.email : '',    // masked, display-only
+    phone: typeof x.phone === 'string' ? x.phone : '',
   }));
 }
 function clearCands() { S.searchGen++; S.cands = []; $('#cands').hidden = true; $('#cands').innerHTML = ''; $('#intake').classList.remove('has-cands'); }
@@ -978,18 +1033,30 @@ function showCands(state, role, msg) {
   else if (state === 'error') head = `<h2>The search didn't go through.</h2><p>${esc(msg || 'Try again in a moment.')} ${back}</p>`;
   else {
     const n = S.cands.length;
-    head = `<h2>${n} ${n === 1 ? 'person fits' : 'people fit'} ${R}.</h2><p>Ranked by fit. Pick one and the agent runs the backchannel on them. <button type="button" class="link" data-act="clear">Clear</button></p>`;
-    body = `<ol class="clist">${S.cands.map((x, i) => {
-      const role_ = [x.title, x.company, x.location].filter(Boolean).map(esc).join(' · ');
-      const fit = { strong: 'Strong match', possible: 'Possible match', weak: 'Weak match' }[x.fit];
-      const li = x.linkedin ? `<span class="dot">·</span><a href="${esc(x.linkedin)}" target="_blank" rel="noopener noreferrer">LinkedIn<span aria-hidden="true"> ↗</span></a>` : '';
-      const sc = x.score != null ? `<span class="dot">·</span><span class="num">fit ${esc(Math.round(x.score * 10) / 10)}</span>` : '';
-      return `<li class="cand" data-i="${i}" style="--i:${i}"><span class="c-rk num">${i + 1}</span>
-        <div><p class="c-name">${esc(x.name)}${fit ? ` <span class="c-fit">${fit}</span>` : ''}</p><p class="c-role">${role_}${sc}${li}</p>${x.why ? `<p class="c-why">${esc(x.why)}</p>` : ''}</div>
-        <button type="button" class="btn ghost sm c-go"${S.busy ? ' disabled' : ''}>Check ${esc(firstName(x.name))} <span class="arr" aria-hidden="true">→</span></button></li>`;
-    }).join('')}</ol>`;
+    const ph = S.cands.some(x => x.email || x.phone) ? ' Contact details are masked.' : '';
+    head = `<h2>${n} ${n === 1 ? 'person fits' : 'people fit'} ${R}.</h2><p>Ranked by fit. Pick one and the agent runs the backchannel on them.${ph} <button type="button" class="link" data-act="clear">Clear</button></p>`;
+    body = `<ol class="clist">${S.cands.map(candCard).join('')}</ol>`;
   }
   c.innerHTML = `<div class="cands-h">${head}</div>${body}`;
+}
+const TIER = { strong: 'Strong match', possible: 'Possible match', weak: 'Weak match' };
+function candCard(x, i) {
+  const t = String(x.title || '').trim(), co = String(x.company || '').trim();
+  const inTitle = normCo(co) && normCo(t).includes(normCo(co));   // "Founder at Stripe" already names it
+  const role = t && co && !inTitle ? `${esc(t)} at <b>${esc(co)}</b>` : t ? esc(t) : co ? `<b>${esc(co)}</b>` : '';
+  const meta = [x.location ? esc(x.location) : '',
+    x.score != null ? `<span class="num">fit ${esc(Math.round(x.score * 10) / 10)}</span>` : '',
+    x.linkedin ? `<a href="${esc(x.linkedin)}" target="_blank" rel="noopener noreferrer">LinkedIn<span aria-hidden="true"> ↗</span></a>` : '']
+    .filter(Boolean).join('<span class="dot">·</span>');
+  const tier = x.fits === false ? '<span class="c-tier off"><i></i>Off the brief</span>'
+    : TIER[x.fit] ? `<span class="c-tier ${esc(x.fit)}"><i></i>${TIER[x.fit]}</span>` : '';
+  return `<li class="cand" data-i="${i}" style="--i:${i}"><span class="c-rk num">${i + 1}</span>
+    <div class="c-body">
+      <div class="c-hd"><div class="c-id"><p class="c-name">${esc(x.name)}</p>${role ? `<p class="c-role">${role}</p>` : ''}${meta ? `<p class="c-meta">${meta}</p>` : ''}</div>${tier}</div>
+      ${x.why ? `<p class="c-why">${esc(x.why)}</p>` : ''}
+      <div class="c-foot">${contactHtml(x)}
+        <button type="button" class="btn ${i === 0 ? 'primary' : 'ghost'} sm c-go" aria-label="Backchannel ${esc(x.name)}"${S.busy ? ' disabled' : ''}>Backchannel <span class="arr" aria-hidden="true">→</span></button></div>
+    </div></li>`;
 }
 async function findCandidates() {
   const role = val('role'), g = ++S.searchGen;
@@ -1010,11 +1077,12 @@ async function findCandidates() {
   showCands(S.cands.length ? 'list' : 'empty', role, d && d.message);
 }
 $('#cands').addEventListener('click', e => {
-  if (e.target.closest('a')) return;
+  if (e.target.closest('a, .ct')) return;   // links + contact lines (selectable text) don't pick
   if (e.target.closest('[data-act=clear]')) { clearCands(); $('#founder_name').focus(); return; }
   const li = e.target.closest('.cand'); if (!li || S.busy) return;
   const c = S.cands[+li.dataset.i]; if (!c) return;
   $('#founder_name').value = c.name; $('#founder_company').value = c.company;
+  // only name / company / person_id go to POST /run — never the masked email or phone
   startRun({ name: c.name, company: c.company, why: c.why, pid: c.pid }, $('.c-go', li));
 });
 
@@ -1168,23 +1236,39 @@ function pRefs(r, animate) {
   const n = r.n_found || list.length;
   $('#pRefsCnt').textContent = `${n} with dated overlap`;
   $('#pRefsHead').innerHTML = '<div class="refs-h" aria-hidden="true"><span>Ranked by overlap × seniority</span><span>Score</span></div>';
-  $('#pRefs').innerHTML = list.map((x, i) => {
-    const mo = +x.overlap_months || 0, sc = typeof x.score === 'number' ? x.score : null;
-    const wgt = sc != null && mo ? Math.round(sc / mo * 100) / 100 : null;
-    const role = x.title || x.display || 'Former colleague';
-    const meta = [x.company, x.seniority].filter(Boolean).join(' · ');
-    const formula = mo ? `<b>${mo} mo</b>${wgt ? ` × ${wgt}` : ''}` : '';
-    return `<li class="ref${i === 0 ? ' top' : ''}" data-co="${esc(normCo(x.company))}" data-w="${esc(x.overlap_window || '')}" style="--i:${i + 1}">
-      <span class="ref-rk num" aria-label="Rank ${i + 1}">${i + 1}</span>
-      <div><div class="ref-h"><span class="ref-t">${esc(role)}</span><span class="ref-sc num" title="Score">${sc != null ? esc(Number.isInteger(sc) ? sc : sc.toFixed(1)) : '—'}</span></div>
-        <div class="ref-m"><span>${esc(meta)}</span><span class="ref-st">${i === 0 ? 'Top match' : 'Reserve'}</span></div></div>
-      ${trk(parseWin(x.overlap_window), `Overlap ${x.overlap_window || ''}`)}
-      <div class="ref-f num">${esc(x.overlap_window || '')}${x.overlap_window && formula ? '<span class="dot">·</span>' : ''}${formula}</div></li>`;
-  }).join('');
+  $('#pRefs').innerHTML = list.map(refCard).join('');
   $('#pNote').hidden = false;
   if (S.refPhase) setRefState(S.refPhase);
   if (animate && !REDUCED) flash($('#pRefSec'), 'grow-in', 1600);
 }
+// #1 (the one the agent calls) is a full card; #2–#4 are compact, contact on demand.
+function refCard(x, i) {
+  const top = i === 0, mo = +x.overlap_months || 0, sc = typeof x.score === 'number' ? x.score : null;
+  const wgt = typeof x.seniority_weight === 'number' ? x.seniority_weight : sc != null && mo ? Math.round(sc / mo * 100) / 100 : null;
+  const role = x.title || x.display || 'Former colleague', sen = x.seniority ? cap(x.seniority) : '';
+  const nm = x.name || role;
+  const meta = [x.name ? (x.title || x.display) : null, x.company, sen].filter(Boolean).map(esc).join('<span class="dot">·</span>');
+  const formula = mo ? `<b>${mo} mo</b>${wgt ? ` × ${wgt}` : ''}` : '';
+  const attrs = `class="ref${top ? ' top' : ''}" data-co="${esc(normCo(x.company))}" data-w="${esc(x.overlap_window || '')}" style="--i:${i + 1}"`;
+  const more = !top && (x.email || x.phone) ? '<button type="button" class="link ref-x" aria-expanded="false">Contact</button>' : '';
+  const head = `<span class="ref-rk num" aria-label="Rank ${i + 1}">${i + 1}</span>
+    <div><div class="ref-h"><span class="ref-t">${esc(nm)}</span><span class="ref-sc num" title="Score: months together × seniority weight">${esc(fmtScore(sc))}</span></div>
+      ${meta || more ? `<p class="ref-m"><span>${meta}</span>${more}</p>` : ''}</div>
+    ${trk(parseWin(x.overlap_window), `Overlap ${x.overlap_window || ''}`)}`;
+  if (top) {
+    const ov = x.overlap_window || mo ? `<div><dt>Overlap</dt><dd class="num">${esc(x.overlap_window || '')}${mo ? `<span class="sub">${mo} months side by side</span>` : ''}</dd></div>` : '';
+    const why = sc != null && mo && wgt ? `<div><dt>Score</dt><dd class="num">${esc(fmtScore(sc))}<span class="dot">·</span>${mo} mo × ${wgt}<span class="sub">months together × seniority weight</span></dd></div>` : '';
+    return `<li ${attrs}><p class="ref-top"><span class="ref-st">Top match</span></p>${head}
+      ${ov || why ? `<dl class="ref-dl">${ov}${why}</dl>` : ''}${contactHtml(x)}</li>`;
+  }
+  return `<li ${attrs}>${head}
+    <p class="ref-f num"><span>${esc(x.overlap_window || '')}</span>${x.overlap_window && formula ? '<span class="dot">·</span>' : ''}<span>${formula}</span></p>${contactHtml(x)}</li>`;
+}
+$('#pRefs').addEventListener('click', e => {
+  const b = e.target.closest('.ref-x'); if (!b) return;
+  const on = b.closest('.ref').classList.toggle('open');
+  b.setAttribute('aria-expanded', String(on)); b.textContent = on ? 'Hide' : 'Contact';
+});
 $('#pMore').addEventListener('click', () => {
   const p = $('#profile'), on = p.classList.toggle('open');
   $('#pMore').setAttribute('aria-expanded', String(on));

@@ -24,6 +24,7 @@ BOLNA_BASE_URL overrides the API origin (tests point it at a local fake).
 
 from __future__ import annotations
 
+import time as _time
 import os
 import re
 from typing import Any
@@ -65,12 +66,20 @@ def place_call(agent_id: str, phone: str, *, user_data: dict[str, Any] | None = 
     body: dict[str, Any] = {"agent_id": agent_id, "recipient_phone_number": phone}
     if user_data:
         body["user_data"] = user_data
-    try:
-        resp = requests.post(
-            f"{BASE_URL}/call", headers=_headers(), json=body, timeout=timeout
-        )
-    except requests.RequestException as e:
-        raise BolnaError(f"Bolna /call unreachable: {e}") from None
+    resp = None
+    last_err: Exception | None = None
+    for attempt in range(4):
+        try:
+            resp = requests.post(
+                f"{BASE_URL}/call", headers=_headers(), json=body, timeout=timeout
+            )
+            break
+        except requests.RequestException as e:
+            last_err = e
+            if attempt < 3:
+                _time.sleep(1.5 * (attempt + 1))
+    if resp is None:
+        raise BolnaError(f"Bolna /call unreachable after retries: {last_err}") from None
     if resp.status_code not in (200, 201):
         raise BolnaError(f"Bolna /call -> HTTP {resp.status_code}: {resp.text[:300]}")
     return resp.json()
@@ -78,12 +87,20 @@ def place_call(agent_id: str, phone: str, *, user_data: dict[str, Any] | None = 
 
 def get_execution(execution_id: str, *, timeout: int = 30) -> dict[str, Any]:
     """GET /executions/{id} — poll call status + transcript."""
-    try:
-        resp = requests.get(
-            f"{BASE_URL}/executions/{execution_id}", headers=_headers(), timeout=timeout
-        )
-    except requests.RequestException as e:
-        raise BolnaError(f"Bolna /executions unreachable: {e}") from None
+    resp = None
+    last_err: Exception | None = None
+    for attempt in range(4):
+        try:
+            resp = requests.get(
+                f"{BASE_URL}/executions/{execution_id}", headers=_headers(), timeout=timeout
+            )
+            break
+        except requests.RequestException as e:
+            last_err = e
+            if attempt < 3:
+                _time.sleep(1.5 * (attempt + 1))
+    if resp is None:
+        raise BolnaError(f"Bolna /executions unreachable after retries: {last_err}") from None
     if resp.status_code != 200:
         raise BolnaError(
             f"Bolna /executions/{execution_id} -> HTTP {resp.status_code}: {resp.text[:300]}"

@@ -35,6 +35,7 @@ steps is also included.
 | Report synthesis | **Real** | Haiku writes the report as strict JSON and Jev scores credibility, enthusiasm and claim corroboration. With a role, the tier and rationale judge fit for that role and the report adds `role_fit` (strong / moderate / weak / unclear). There's a 25-second deadline. In mock mode, a slow or failed synthesis falls back to a pre-saved report (`samples/fallback_report.json`). |
 | Call-back to the VC (call 2) | **Mock (default)** or **live** | Mock streams `samples/vc_call_sample.json`, with the agent's lines filled from this run's real verdict and highlights. Live calls the VC's typed number, which must be allowlisted. Haiku extracts the VC's free slots, with a 15-second deadline and a cautious regex fallback. Live mode never invents slots. If the call can't be read, the founder isn't called. If the VC gave no firm day, or only the regex could read the call, the booking is marked tentative. |
 | Founder call and booking (call 3) | **Mock (default)** or **live** | Mock streams `samples/founder_call_sample.json`. Live calls `BACKCHANNEL_FOUNDER_PHONE`. Haiku extracts the confirmed time, which is checked against the VC's slots. "Today" and "tomorrow" are resolved in `BACKCHANNEL_TZ`. After a PASS, the founder is offered a meeting, not funding. |
+| Contact lines on the cards | **Real, masked + cached** | Each shown candidate and each shown referee (top + 3) gets a masked email (`p•••.c•••@stripe.com`) and phone (`+1 31XXX X1004`) from `/person/contact/enrich`, by `crustdata_person_id` (else the LinkedIn URL). The raw answer stays in `.cache/`; only the masked forms reach the UI, the DB and the logs. No match, an error or a missing field falls back to a masked placeholder (`contact_source` says which). Display-only, never dialed. |
 | Founder summary email | **Real (Resend)** | After a firm booking, the `done` step emails `BACKCHANNEL_FOUNDER_EMAIL` the meeting time, a one-line "a VC wants to meet you" and an `.ics` invite (30 minutes, organizer = the VC, attendee = the founder). The slot ("Thursday 3:00 PM") becomes the next such date in `BACKCHANNEL_TZ`. Mock runs send it too, marked "Simulated demo". No Resend config = skipped, with the reason in `result.email`. |
 
 The referee is always shown by **role and company**, never by name. If the VC or
@@ -88,7 +89,8 @@ values are ever printed.
   readable `message`.
 - The SSE contract is unchanged: the same 7 steps and event shapes. New data rides in
   existing payloads: `result.role`, `result.role_fit`,
-  `result.email = {sent, to, id?, status, subject, simulated, invite: {start, end, timezone, when}, reason?}`,
+  `result.email = {sent, to, id?, status, subject, simulated, invite: {start, end, timezone, when}, reason?}`
+  (`to` is masked, as in `fo•••@gmail.com`, because run results are public),
   the `done` step's `email_sent`, the synthesize step's `role_fit`, and a
   `crustdata` block (`live`, `api_calls`, `cache_hits`) on steps 1-2.
 
@@ -98,8 +100,12 @@ values are ever printed.
 |----------|---------|
 | `CRUSTDATA_API_KEY` | Crustdata key. Without it the app runs cache-only. |
 | `CRUSTDATA_LIVE` | `1` (default): live lookups for anything not in `.cache/`. `0`: cache-only, zero live calls. A 402 pauses live calls for 10 minutes. |
+| `BACKCHANNEL_CONTACT_ENRICH` | `1` (default): contact-enrich anyone shown who isn't in `.cache/` yet. `0`: cached contacts only, placeholders for the rest, no credits. A 401/402/403 pauses new lookups for 10 minutes. |
+| `BACKCHANNEL_REF_CONTACTS` | `real` (default): referee cards show the real masked contact. `placeholder`: referee cards get salted placeholders and no lookup. Use it when referee anonymity matters: a real contact is the same masked string as that person's own candidate card, and the email shows their initials and domain. |
+| `BACKCHANNEL_CONTACT_TIMEOUT_S` | How long a `/search` or the find-references step waits for contacts (10s). A slower lookup shows the placeholder, finishes in the background and is cached for next time. |
 | `RESEND_API_KEY`, `RESEND_FROM`, `BACKCHANNEL_FOUNDER_EMAIL` | The founder summary email. All three are needed, or the email is skipped. Resend's test mode only delivers to the account owner's address. |
 | `BACKCHANNEL_VC_EMAIL` | Optional `.ics` organizer address. Defaults to the `RESEND_FROM` address. |
+| `BACKCHANNEL_EMAIL` | `0` turns the founder email off, for example on a public mock demo where every booked run would otherwise send one (Resend's free tier allows 100 a day). |
 | `BACKCHANNEL_AGENT_ID` | Optional role-aware reference agent (`setup_agents.py`). Unset = the proven Phase-1 reference agent, which ignores the role. |
 | `BOLNA_API_KEY` | Bolna key. Live mode only. |
 | `GATEWAY_URL`, `GATEWAY_KEY` | AI gateway (OpenAI-compatible) used for synthesis. |
@@ -115,7 +121,7 @@ values are ever printed.
 | `BACKCHANNEL_DB` | SQLite path (default `.state/runs.db`). |
 | `BACKCHANNEL_TZ` | Time zone used to resolve "today" and "tomorrow" on the calls (default `Asia/Kolkata`). |
 | `BACKCHANNEL_SYNTH_TIMEOUT_S`, `BACKCHANNEL_EXTRACT_TIMEOUT_S`, `BACKCHANNEL_CALL_TIMEOUT_S`, `BACKCHANNEL_CALL_HARD_CAP_S`, `BACKCHANNEL_POLL_S` | Timing knobs. Defaults: 25s, 15s per slot or time extraction (6s in mock mode), 240s to connect, 480s once connected, 4s. |
-| `BACKCHANNEL_EMAIL_TIMEOUT_S`, `BACKCHANNEL_WHYFIT_TIMEOUT_S` | Resend send deadline (20s) and the `/search` why-fit deadline (8s). |
+| `BACKCHANNEL_EMAIL_TIMEOUT_S`, `BACKCHANNEL_WHYFIT_TIMEOUT_S`, `BACKCHANNEL_CRUST_TIMEOUT_S` | Resend send deadline (20s), the `/search` why-fit deadline (8s) and the per-request live Crustdata timeout (20s). A timeout also pauses live lookups for 60s. |
 
 ### Safety properties
 
@@ -129,6 +135,11 @@ values are ever printed.
   saved, or before the call was placed at all, that call is reported, not dialed.
   For the VC or founder call, the run still finishes with the verdict. A run that
   expires after its verdict is ready also finishes with the verdict, marked not booked.
+- **Displayed contacts are never dialed.** The three calls dial
+  `BACKCHANNEL_REF_PHONE`, the VC's typed number and `BACKCHANNEL_FOUNDER_PHONE`
+  only. A masked number always contains `X`, and `_live_call` refuses it before
+  `bolna.place_call` even if it's on the allowlist. `live_preflight` refuses one
+  typed as the VC number.
 - **Old runs finish the old way.** A run started before Phase 2 keeps steps 5-6 as
   Phase 2 placeholders when it resumes.
 - **One live run at a time.** POSTs are rate-limited (5 new runs a minute).
@@ -164,6 +175,10 @@ with their real overlap windows, then a synthesized report for the top referee
   founder costs one resolve plus at most three company searches, and a `/search`
   costs one search of 8 results. Set `CRUSTDATA_LIVE=0` for a strictly cache-only
   demo.
+- **Contact-enrich costs 5 credits a person** (a not-found answer is free). Only the
+  people shown are looked up (at most 6 per `/search`, 4 referees per run), each one
+  once ever: the answer, not-found included, is cached per person id. Two lookups
+  of one person at the same time share a request.
 - If the key hits its monthly cap (`HTTP 402`), a rate limit (`429`) or a network
   error, that one lookup falls back to the cache. A missed company search is
   skipped and the run continues. A 402 also pauses live calls for 10 minutes.
@@ -183,6 +198,9 @@ with their real overlap windows, then a synthesized report for the top referee
   RFC 5545 `.ics` and sends through Resend with an idempotency key.
 - `db.py`: durable run state (SQLite, under `.state/`, git-ignored).
 - `crust.py`: thin Crustdata client with disk cache and call counters.
+- `contacts.py`: contact-enrich for the cards (per-person cache, deadline, fallback).
+- `placeholder_contacts.py`: email/phone masking, the masked placeholder fallback,
+  and `is_placeholder_phone` (the never-dial guard).
 - `overlap.py`: the core logic. Tenure parsing, `overlap_months`, seniority weighting
   and `find_offlist_references`.
 - `bolna.py`: Bolna client (`place_call` with per-call `user_data`, `get_execution`,
@@ -211,7 +229,9 @@ with their real overlap windows, then a synthesized report for the top referee
   can overlap for years without close contact, and seniority weighting is only a
   rough correction. Production would add title-adjacency and team signals.
 - Live mode dials pre-verified numbers that stand in for the referee and the founder.
-  Finding contact details (`/person/contact/enrich`) is out of scope.
+  The real contacts from `/person/contact/enrich` are only displayed (masked), never
+  dialed. A card can mix a real email with a placeholder phone when Crustdata has
+  only one of them.
 - Slots are weekday-level ("Thursday afternoon"). The invite turns the booked slot
   into the next such date in `BACKCHANNEL_TZ`, and is sent only to
   `BACKCHANNEL_FOUNDER_EMAIL` (the VC isn't emailed).

@@ -42,6 +42,13 @@ ZERO live calls.
 
 Referee privacy: the referee is shown by role + company, never by name, and the
 mock-mode calls are labelled "Simulated" (their transcripts are fictional samples).
+
+Contacts: each displayed reference brief (top + 3 others) carries a DISPLAY-ONLY
+masked `email` ("a•••.k•••@stripe.com") and `phone` ("+1 31XXX X1004") from Crustdata
+contact-enrich (contacts.py, disk-cached per person), or a masked placeholder from
+placeholder_contacts.py when there's no real contact. They are never dialed: the three
+calls dial REF_PHONE, the VC's own typed number and FOUNDER_PHONE only, and _live_call
+refuses a masked number before anything reaches bolna.place_call.
 """
 
 from __future__ import annotations
@@ -50,6 +57,8 @@ import asyncio
 import difflib
 import json
 import os
+import re
+import secrets
 import sys
 import time
 from pathlib import Path
@@ -57,7 +66,9 @@ from typing import Any
 
 import db
 import bolna
+import contacts
 import invite
+import placeholder_contacts
 import report as report_mod
 import scheduling
 from crust import Crust, CrustError
@@ -194,6 +205,8 @@ def canonical_founder(name: str | None) -> str:
 # Crustdata: live behind the disk cache (default), or cache-only (CRUSTDATA_LIVE=0)
 # ---------------------------------------------------------------------------
 _LIVE_PAUSE_S = 600.0        # after a 402, stay cache-only this long (don't hammer a cap)
+_NET_PAUSE_S = 60.0          # after a timeout / dropped connection, a short cache-only spell
+_LIVE_TIMEOUT_S = float(os.environ.get("BACKCHANNEL_CRUST_TIMEOUT_S", "20"))
 _live_paused_until = 0.0
 
 
@@ -205,6 +218,11 @@ def crust_live() -> bool:
 
 def _credit_error(msg: str) -> bool:
     return "402" in msg or "insufficient_credits" in msg or "credit_limit" in msg
+
+
+def _credit_error_recent() -> bool:
+    """The current pause is a long (402) one, not a short network one."""
+    return _live_paused_until - time.time() > _NET_PAUSE_S
 
 
 def _cache_read(c: Crust, endpoint: str, body: dict, why: str) -> Any:
@@ -242,19 +260,31 @@ class LiveCrust(Crust):
 
     live = True
 
+    def __init__(self, *a, **k):
+        k.setdefault("timeout", _LIVE_TIMEOUT_S)   # a hung API mustn't stall a step for minutes
+        super().__init__(*a, **k)
+
     def _post(self, endpoint, body, *, cache=True):  # type: ignore[override]
         global _live_paused_until
-        if self._cache_path(endpoint, body).exists():
-            return _cache_read(self, endpoint, body, "unreadable cache file")
+        path = self._cache_path(endpoint, body)
+        if path.exists():
+            try:
+                return _cache_read(self, endpoint, body, "unreadable cache file")
+            except CrustError:
+                path.unlink(missing_ok=True)   # half-written / corrupt: refetch it live
         if time.time() < _live_paused_until:
             return _cache_read(self, endpoint, body,
-                               "live Crustdata paused after a credit error (HTTP 402)")
+                               "live Crustdata paused after a credit error (HTTP 402)"
+                               if _credit_error_recent() else
+                               "live Crustdata paused after a network error")
         try:
             return super()._post(endpoint, body, cache=cache)
         except CrustError as e:
             msg = str(e)
             if _credit_error(msg):
                 _live_paused_until = time.time() + _LIVE_PAUSE_S
+            elif "network error" in msg:   # down / hanging: let the next lookups use the cache
+                _live_paused_until = max(_live_paused_until, time.time() + _NET_PAUSE_S)
             _log(f"live Crustdata {endpoint} failed ({msg[:160]}); falling back to cache")
             self.call_log.append({"endpoint": endpoint, "source": "live-failed"})
             raise CrustError(f"{endpoint} -> live lookup failed, no cached copy: {msg[:300]}") \
@@ -300,7 +330,7 @@ def _lookup_failed(name: str, c: Crust, err: str) -> FriendlyError:
     if not getattr(c, "live", False):
         return _not_preloaded(name)
     hint = f" Try {DEMO_FOUNDER}." if DEMO_FOUNDER and name != DEMO_FOUNDER else ""
-    if _credit_error(err) or "paused" in err:
+    if _credit_error(err) or "after a credit error" in err:
         return FriendlyError(f"Live lookups are paused (the data provider's credit limit was "
                              f"hit) and there's no saved work history for “{name}”.{hint}")
     return FriendlyError(f"Couldn't reach the data provider to look up “{name}”, and there's "
@@ -315,63 +345,127 @@ def _person_id(v: Any) -> int | None:
     return n if n > 0 else None
 
 
-def _worked_at(profile: dict, company: str) -> bool:
-    """True if `company` appears in the profile's employment history (loose match)."""
-    want = _norm(company)
-    if not want:
+def _company_match(want: str, have: str) -> bool:
+    """Whole-word company match: 'Stripe' ~ 'Stripe, Inc.'; 'AI' never ~ 'Airtable'.
+    Names under 3 characters must match exactly."""
+    want, have = _norm(want), _norm(have)
+    if not want or not have:
         return False
-    for t in _merge_companies(profile):
-        have = _norm(t.company)
-        if have and (want in have or have in want):
-            return True
-    return False
+    if want == have:
+        return True
+    short, long_ = sorted((want, have), key=len)
+    return len(short) >= 3 and re.search(rf"(?<!\w){re.escape(short)}(?!\w)", long_) is not None
 
 
-def resolve_founder_sync(name: str, person_id: Any = None,
-                         company: str = "") -> tuple[dict, dict]:
+def _worked_at(profile: dict, company: str) -> bool:
+    """True if `company` appears in the profile's employment history."""
+    return any(_company_match(company, t.company) for t in _merge_companies(profile))
+
+
+def _same_person_name(typed: str, found: str | None) -> bool:
+    """Loose check that a pinned profile is the person whose name was typed."""
+    a, b = _norm(typed), _norm(found)
+    if not a or not b:
+        return True
+    if a == b or difflib.SequenceMatcher(None, a, b).ratio() >= 0.6:
+        return True
+    return bool(set(a.split()) & set(b.split()))
+
+
+def resolve_founder_sync(name: str, person_id: Any = None, company: str = "",
+                         prefer_id: Any = None) -> tuple[dict, dict]:
     """Crustdata person/search -> (profile, crustdata stats + how it matched).
 
     By name (fuzzy), or pinned to an exact crustdata_person_id — e.g. a candidate
-    picked from POST /search, so a common name can't resolve to the wrong person.
+    picked from POST /search, so a common name can't resolve to the wrong person (a
+    pin whose profile clearly isn't the typed name is ignored: a stale UI pick).
     With a company and a first hit that never worked there, the top 5 name matches
     are checked for one that did (a common name -> the right person). The first,
     limit=1 request is unchanged, so cached founders still resolve cache-only.
+    `prefer_id` (a resume) returns the person resolved the first time, never a
+    namesake that a now-working lookup would pick instead.
     Cache hit = free; live mode looks up anyone else (CRUSTDATA_LIVE=1)."""
     name = canonical_founder(name)
     pid = _person_id(person_id)
+    want = _person_id(prefer_id)
     c = _crust()
-    cond = ({"field": "crustdata_person_id", "type": "=", "value": pid} if pid else
-            {"field": "basic_profile.name", "type": "(.)", "value": name})
-    try:
-        res = c.search_people([cond], limit=1)
-    except CrustError as e:
-        raise _lookup_failed(name, c, str(e)) from None
-    profiles = res.get("profiles") or []
+    by_name = {"field": "basic_profile.name", "type": "(.)", "value": name}
+    match: dict = {"by": "person_id" if pid else "name"}
+    profiles: list = []
+    if pid:
+        try:
+            profiles = c.search_people([{"field": "crustdata_person_id", "type": "=",
+                                         "value": pid}], limit=1).get("profiles") or []
+        except CrustError as e:   # pin unavailable (cache-only miss / outage): try the name
+            _log(f"founder_person_id {pid} lookup failed ({str(e)[:120]}); trying the name")
+        if profiles and not _same_person_name(name, _name(profiles[0])):
+            _log(f"founder_person_id {pid} is {_name(profiles[0])!r}, not {name!r}; "
+                 f"resolving by name instead")
+            profiles = []
+        if not profiles:
+            pid, match = None, {"by": "name", "pin_ignored": True}
+    if not profiles:
+        try:
+            profiles = c.search_people([by_name], limit=1).get("profiles") or []
+        except CrustError as e:
+            raise _lookup_failed(name, c, str(e)) from None
     if not profiles:
         if not getattr(c, "live", False):
             raise _not_preloaded(name)
         raise FriendlyError(f"Couldn't find a work history for “{name}”. Check the spelling "
                             f"or use their full name.")
-    profile, match = profiles[0], {"by": "person_id" if pid else "name"}
+    profile = profiles[0]
+    if want and profile.get("crustdata_person_id") == want:
+        return profile, {**_crust_stats(c), "match": {**match, "resumed": True}}
     company = (company or "").strip()
-    if company and not pid:
-        match["company"] = company
-        match["company_matched"] = _worked_at(profile, company)
-        if not match["company_matched"]:
+    if (company and not pid) or want:
+        if company and not pid:
+            match["company"] = company
+            match["company_matched"] = _worked_at(profile, company)
+        if want or not match.get("company_matched"):
             try:   # a cache miss in cache-only mode just keeps the first hit
-                more = c.search_people([cond], limit=5).get("profiles") or []
+                more = c.search_people([by_name], limit=5).get("profiles") or []
             except CrustError:
                 more = []
-            hit = next((p for p in more if _worked_at(p, company)), None)
-            if hit is not None:
+            if want:
+                hit = next((p for p in more if p.get("crustdata_person_id") == want), None)
+                if hit is None:   # last resort: the exact person by id
+                    try:
+                        hit = next(iter(c.search_people(
+                            [{"field": "crustdata_person_id", "type": "=", "value": want}],
+                            limit=1).get("profiles") or []), None)
+                    except CrustError:
+                        hit = None
+                if hit is not None:
+                    return hit, {**_crust_stats(c), "match": {**match, "resumed": True}}
+            hit = next((p for p in more if _worked_at(p, company)), None) if company else None
+            if hit is not None and not pid:
                 profile = hit
                 match.update(by="name+company", company_matched=True)
     return profile, {**_crust_stats(c), "match": match}
 
 
+_REFS_SHOWN = 4   # the step-2 brief shows the top referee + 3 others
+
+
+def ref_real_contacts() -> bool:
+    """BACKCHANNEL_REF_CONTACTS: "real" (default) = contact-enrich the shown referees;
+    "placeholder" = salted placeholders only. A real contact is the same masked string
+    as that person's own candidate card, so it can link an anonymous referee to a name."""
+    return os.environ.get("BACKCHANNEL_REF_CONTACTS", "real").strip().lower() != "placeholder"
+
+
 def find_refs_sync(profile: dict) -> tuple[list[dict], dict]:
+    """Ranked referees; the ones the UI shows also get their masked contact (in place)."""
     c = _crust()
     ranked, meta = find_offlist_references(c, profile, max_companies=3, pool_per_company=10)
+    if ref_real_contacts():
+        shown = ranked[:_REFS_SHOWN]
+        got, meta["contacts"] = contacts.display(c, shown, _ref_placeholder,
+                                                 id_key="crustdata_person_id",
+                                                 url_key="linkedin_url")
+        for r, ct in zip(shown, got):
+            r.update(ct)
     meta["crustdata"] = _crust_stats(c)
     return ranked, meta
 
@@ -417,6 +511,7 @@ def _companies_summary(profile: dict) -> dict:
         summary = ", ".join(names[:3]) + f" +{len(names) - 3} more"
     return {
         "name": _name(profile),
+        "person_id": profile.get("crustdata_person_id"),
         "headline": (profile.get("basic_profile") or {}).get("headline"),
         "current_title": _current_title(profile),
         "linkedin_url": _linkedin(profile),
@@ -434,21 +529,66 @@ def _ref_display(r: dict) -> str:
     return title
 
 
+# Referee placeholder phones are seeded with a secret, per-process salt: a candidate's
+# placeholder is derived from the same Crustdata id, so an unsalted seed would print the
+# same digits on the referee card and on that person's NAMED candidate card. (A REAL
+# contact can't be salted: BACKCHANNEL_REF_CONTACTS=placeholder keeps referees on these.)
+_REF_SALT = secrets.token_hex(8)
+
+
+def _ref_placeholder(r: dict) -> dict:
+    """A referee's masked placeholder email/phone (salted, see _REF_SALT)."""
+    who = r.get("crustdata_person_id") or f"{r.get('name') or r.get('title')}|" \
+                                          f"{r.get('company')}|{r.get('overlap_window')}"
+    return placeholder_contacts.for_person(r.get("name") or "ref", r.get("company"),
+                                           f"ref|{_REF_SALT}|{who}", masked_email=True)
+
+
+def _ref_contact(r: dict) -> dict:
+    """DISPLAY-ONLY masked email/phone for a referee (never dialed — the reference call
+    always dials REF_PHONE): the contact find_refs_sync attached (real contact-enrich,
+    else a placeholder), else a placeholder. A resumed run's referee already carries
+    it (persisted in the step-2 brief, so a restart's new salt doesn't change it)."""
+    if r.get("email") and r.get("phone"):
+        out = {"email": r["email"], "phone": r["phone"]}
+        if r.get("contact_source"):
+            out["contact_source"] = r["contact_source"]
+        return out
+    return {**_ref_placeholder(r), "contact_source": {"email": "placeholder",
+                                                      "phone": "placeholder"}}
+
+
 def _referee_brief(r: dict) -> dict:
     return {
         "display": _ref_display(r),
+        "name": r.get("name"),
         "title": r.get("title"),
         "company": r.get("company"),
         "overlap_window": r.get("overlap_window"),
         "overlap_months": r.get("overlap_months"),
         "seniority": r.get("seniority"),
+        "seniority_weight": r.get("seniority_weight"),
         "score": r.get("score"),
+        **_ref_contact(r),
     }
 
 
+def _referee_from_brief(b: dict) -> dict:
+    """A resumed run's referee, rebuilt from its persisted step-2 brief (no name —
+    nothing downstream needs it: synthesis and every call use role + company)."""
+    return {"name": None, "linkedin_url": None, "title": b.get("title"),
+            "company": b.get("company"), "overlap_window": b.get("overlap_window"),
+            "overlap_months": b.get("overlap_months"), "seniority": b.get("seniority"),
+            "seniority_weight": b.get("seniority_weight") or 1.0, "score": b.get("score"),
+            "email": b.get("email"), "phone": b.get("phone"),   # display-only, never dialed
+            "contact_source": b.get("contact_source")}
+
+
 def _referee_for_synthesis(r: dict) -> dict:
-    """The referee as the LLM sees it — anonymized so no name lands in the report."""
-    return {**r, "name": _ref_display(r), "linkedin_url": None}
+    """The referee as the LLM sees it — anonymized so no name lands in the report
+    (and no placeholder contact either)."""
+    keep = {k: v for k, v in r.items() if k not in ("email", "phone", "contact_source")}
+    return {**keep, "name": _ref_display(r), "linkedin_url": None}
 
 
 def _intro_email(vc_name: str, founder: dict, referee: dict, verdict: dict,
@@ -765,11 +905,15 @@ async def _reference_call(run_id: str, referee: dict, prior_step: dict, mode: st
                  + (" (simulated)" if simulated else ""), True)
 
     if mode == "live":
+        # Dials REF_PHONE (the controlled number) — NEVER referee["phone"], which is
+        # masked and display-only (a real contact-enrich number or a placeholder).
         transcript = await _live_call(run_id, "call_reference", prior_exec, base_result,
                                       agent_id=BOLNA_AGENT_ID, phone=REF_PHONE,
                                       party=_party("call_reference"),
-                                      user_data=_reference_user_data(founder_name, referee,
-                                                                     role))
+                                      user_data=(_reference_user_data(founder_name, referee,
+                                                                      role)
+                                                 if BOLNA_AGENT_ID != bolna.DEFAULT_AGENT_ID
+                                                 else None))
     else:
         qa, signals = _load_mock_transcript(founder_name, role)
         transcript = await _mock_call(run_id, "call_reference", base_result, qa, signals)
@@ -792,6 +936,7 @@ def _reference_user_data(founder_name: str, referee: dict, role: str) -> dict:
     return {
         "candidate_name": full,
         "candidate_first": _first(full, "the candidate"),
+        "referee_name": _first(referee.get("name") or "", "there"),
         "role": role or "a senior role",
         "company": referee.get("company") or "a previous company",
     }
@@ -859,6 +1004,12 @@ async def _live_call(run_id: str, step: str, prior_exec: str | None, base_result
             raise FriendlyError("Live calling isn't set up on this server (no "
                                 + ("reference " if step == "call_reference" else "")
                                 + "number configured).")
+        # `phone` is always a configured/typed number (REF_PHONE, the VC's own number,
+        # FOUNDER_PHONE). A display-only contact (real or placeholder) is masked; refuse
+        # it outright so it can never reach bolna.place_call, whatever the allowlist says.
+        if placeholder_contacts.is_placeholder_phone(phone):
+            raise FriendlyError("Live calling only dials verified numbers, and this one "
+                                "is a masked display number.")
         if bolna.normalize_phone(phone) not in _ALLOWED_NORM:
             raise FriendlyError("Live calling is limited to verified numbers, and the "
                                 "configured number isn't on the allowlist.")
@@ -1263,6 +1414,8 @@ async def _founder_leg(run_id: str, run: dict, prior_step: dict, mode: str, fres
         _set_step(run_id, step, "active", label=label, result=base_result)
         _emit_banner(run_id, base_result["banner_ringing"], True)
         if mode == "live":
+            # Dials FOUNDER_PHONE (the controlled number) — never a candidate's or
+            # referee's display-only placeholder `phone`.
             transcript = await _live_call(
                 run_id, step, prior_exec, base_result, agent_id=FOUNDER_AGENT_ID,
                 phone=FOUNDER_PHONE, party=_party(step, founder_name),
@@ -1345,9 +1498,17 @@ async def _founder_leg(run_id: str, run: dict, prior_step: dict, mode: str, fres
 _EMAIL_FINAL = ("sent", "skipped", "failed")
 
 
+def _mask_email(addr: str | None) -> str | None:
+    """'jane.doe@acme.com' -> 'ja•••@acme.com' — run results are public."""
+    if not addr or "@" not in addr:
+        return addr
+    local, _, domain = addr.partition("@")
+    return f"{local[:2]}•••@{domain}"
+
+
 def _email_public(rec: dict) -> dict:
-    """The result's `email` field: {sent, to, id?, status, ...}."""
-    out = {"sent": rec.get("state") == "sent", "to": rec.get("to"),
+    """The result's `email` field: {sent, to (masked), id?, status, ...}."""
+    out = {"sent": rec.get("state") == "sent", "to": _mask_email(rec.get("to")),
            "status": rec.get("state")}
     for k in ("id", "subject", "simulated", "invite", "reason"):
         if rec.get(k) is not None:
@@ -1381,8 +1542,7 @@ async def _founder_email(run_id: str, run: dict, founder: dict, meeting: dict | 
     cfg = invite.config()
     if cfg is None:
         return finish({"state": "skipped", "to": None,
-                       "reason": "Email isn't configured on this server (missing "
-                                 + ", ".join(invite.missing_config()) + ")."})
+                       "reason": invite.unavailable_reason()})
     company = ((run["inputs"].get("founder_company") or "").strip()
                or next((c["company"] for c in founder.get("companies") or []
                         if c.get("current")), ""))
@@ -1400,17 +1560,28 @@ async def _founder_email(run_id: str, run: dict, founder: dict, meeting: dict | 
     attempts = int(stored.get("attempts") or 0) + 1
     db.set_email(run_id, {"state": "sending", **composed["summary"],
                           "idempotency_key": key, "attempts": attempts})
-    try:
-        res = await asyncio.wait_for(
-            asyncio.to_thread(invite.send, cfg, composed["payload"], key),
-            timeout=EMAIL_TIMEOUT_S)
-    except Exception as e:  # noqa: BLE001 — timeout, Resend error, anything
-        _log(f"run {run_id}: founder email failed ({type(e).__name__}: {e})")
-        timed_out = isinstance(e, asyncio.TimeoutError)
+    res, err = None, None
+    for i in range(2):   # an unknown outcome (timeout / dropped) is retried once, same key
+        try:
+            res = await asyncio.wait_for(
+                asyncio.to_thread(invite.send, cfg, composed["payload"], key),
+                timeout=EMAIL_TIMEOUT_S)
+            break
+        except Exception as e:  # noqa: BLE001 — timeout, Resend error, anything
+            err = e
+            _log(f"run {run_id}: founder email attempt {i + 1} failed "
+                 f"({type(e).__name__}: {e})")
+            unknown = (isinstance(e, asyncio.TimeoutError)
+                       or (isinstance(e, invite.InviteError) and e.outcome_unknown))
+            if not unknown:
+                break
+    if res is None:
+        unknown = (isinstance(err, asyncio.TimeoutError)
+                   or (isinstance(err, invite.InviteError) and err.outcome_unknown))
         return finish({"state": "failed", **composed["summary"], "attempts": attempts,
-                       "reason": ("The invite email timed out — it may still arrive."
-                                  if timed_out else "The invite email couldn't be sent."),
-                       "detail": f"{type(e).__name__}: {e}"[:300]})
+                       "reason": ("The invite email couldn't be confirmed — it may still "
+                                  "arrive." if unknown else "The invite email couldn't be sent."),
+                       "detail": f"{type(err).__name__}: {err}"[:300]})
     _log(f"run {run_id}: founder email sent to {cfg['to']} (id={res['id']}"
          + (f", retry {attempts}" if attempts > 1 else "") + ")")
     return finish({"state": "sent", **composed["summary"], "id": res["id"],
@@ -1436,9 +1607,19 @@ async def run_pipeline(run_id: str, fresh: bool = False) -> None:
     if prior["resolve_founder"]["status"] == "pending":
         await asyncio.sleep(0.5)
     try:
-        # --- Step 1: resolve_founder (cheap, cache-only) -------------------
+        # A resume reuses the founder + referee persisted by steps 1-2. Live lookups
+        # can answer differently on a retry (a lookup that failed the first time may
+        # now succeed), and the stored call transcript belongs to THAT referee.
+        s1, s2 = prior["resolve_founder"], prior["find_references"]
+        kept_founder = (s1.get("result") or {}).get("founder") if s1["status"] == "done" else None
+        kept_top = (s2.get("result") or {}).get("top") if s2["status"] == "done" else None
+
+        # --- Step 1: resolve_founder (live behind the cache) ---------------
         current = "resolve_founder"
-        if prior["resolve_founder"]["status"] != "done":
+        profile = None
+        if kept_founder and kept_top:
+            founder = kept_founder
+        elif s1["status"] != "done":
             _set_step(run_id, "resolve_founder", "active")
             await asyncio.sleep(0.4)
             profile, cstats = await asyncio.to_thread(resolve_founder_sync, founder_name,
@@ -1448,31 +1629,34 @@ async def run_pipeline(run_id: str, fresh: bool = False) -> None:
                       result={"founder": founder, "summary": founder["summary"],
                               "crustdata": cstats})
         else:
-            profile, _ = await asyncio.to_thread(resolve_founder_sync, founder_name, person_id,
-                                                 founder_company)
-            founder = _companies_summary(profile)
+            profile, _ = await asyncio.to_thread(
+                resolve_founder_sync, founder_name, person_id, founder_company,
+                (kept_founder or {}).get("person_id"))
+            founder = kept_founder or _companies_summary(profile)
 
-        # --- Step 2: find_references (cheap, cache-only) -------------------
+        # --- Step 2: find_references (live behind the cache) ---------------
         current = "find_references"
-        if prior["find_references"]["status"] != "done":
+        if kept_top and kept_founder:
+            top = _referee_from_brief(kept_top)
+        else:
             _set_step(run_id, "find_references", "active")
             await asyncio.sleep(0.4)
-        ranked, meta = await asyncio.to_thread(find_refs_sync, profile)
-        if not ranked:
-            raise FriendlyError(
-                f"No ex-colleagues with overlapping tenure were found for {founder['name']}.")
-        top = ranked[0]
-        if prior["find_references"]["status"] != "done":
+            ranked, meta = await asyncio.to_thread(find_refs_sync, profile)
+            if not ranked:
+                raise FriendlyError(
+                    f"No ex-colleagues with overlapping tenure were found for {founder['name']}.")
+            top = ranked[0]
             _set_step(run_id, "find_references", "done", result={
                 "n_found": len(ranked),
                 "top": _referee_brief(top),
-                "others": [_referee_brief(r) for r in ranked[1:4]],
+                "others": [_referee_brief(r) for r in ranked[1:_REFS_SHOWN]],
                 "summary": f"{len(ranked)} found · top: {_ref_display(top)} "
                            f"({top.get('overlap_months')} mo overlap)",
                 "crustdata": {**(meta.get("crustdata") or {}),
                               "companies": [{"company": c.get("company"),
                                              "status": c.get("status")}
-                                            for c in meta.get("companies_searched") or []]},
+                                            for c in meta.get("companies_searched") or []],
+                              "contacts": meta.get("contacts")},
             })
 
         # --- Step 3: call_reference (THE side effect — idempotent on resume) -
@@ -1601,6 +1785,8 @@ def live_preflight(inputs: dict) -> str | None:
     vc = bolna.normalize_phone(inputs.get("vc_phone"))
     if not vc:
         return "Enter your phone number so the agent can call you back."
+    if placeholder_contacts.is_placeholder_phone(inputs.get("vc_phone")):
+        return "Enter your full phone number (digits only) so the agent can call you back."
     if vc not in _ALLOWED_NORM:
         if not vc.startswith("+"):
             return "Include your country code (for example +91…) so the agent can call you back."
@@ -1652,7 +1838,11 @@ def _finish_expired(run_id: str, run: dict) -> bool:
     stored = db.get_email(run_id) or {}
     if stored.get("state") in _EMAIL_FINAL:
         email = _email_public(stored)
-    else:   # never sends from here (startup, stale run)
+    elif stored.get("state") == "sending":   # never sends from here (startup, stale run)
+        email = {**_email_public(stored), "sent": False, "status": "unconfirmed",
+                 "reason": "The check expired while the invite email was being sent — "
+                           "it may or may not have arrived."}
+    else:
         email = {"sent": False, "to": None, "status": "skipped",
                  "reason": "The check expired before the invite was sent."}
     result = _build_result(run, rep, verdict, founder, top, meeting, email)
