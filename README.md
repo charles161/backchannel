@@ -25,7 +25,7 @@ steps is also included.
 
 ## Demo
 
-**Try it live:** https://backchannel.lightslips.ai/?token=pgZzSfVCsIQTyipY
+**Try it live:** https://backchannel.lightslips.ai — the landing page is open; running a check is token-gated (ask for access), since a live run places real phone calls. The Loom walkthroughs below show a full end-to-end run.
 
 Loom walkthroughs (the real phone calls, end to end):
 
