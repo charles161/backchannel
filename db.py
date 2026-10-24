@@ -6,7 +6,8 @@ GET /run/{id} and the SSE snapshot are both built from here, so a client that
 reconnects — or a process that was killed mid-run — resumes with nothing lost.
 
 Two tables:
-  runs(run_id, idem_key UNIQUE, inputs_hash, inputs..., status, result_json, error, timestamps)
+  runs(run_id, idem_key UNIQUE, inputs_hash, inputs... (incl. role, founder_person_id),
+       status, result_json, email_json, error, timestamps)
   steps(run_id, step, idx, label, status, result_json, execution_id, phase2)
 
 All writes happen on the asyncio loop thread (the pipeline's blocking work runs in
@@ -75,10 +76,14 @@ def init_db() -> None:
             );
             """
         )
-        # migration: inputs_hash (dedupe of identical in-flight submits) on old DBs
+        # migrations on old DBs: inputs_hash (dedupe of identical in-flight submits),
+        # role (what the VC is hiring/funding for), founder_person_id (a candidate
+        # picked from POST /search), email_json (the founder summary email — its
+        # state makes the send idempotent across resumes)
         cols = {r["name"] for r in c.execute("PRAGMA table_info(runs)").fetchall()}
-        if "inputs_hash" not in cols:
-            c.execute("ALTER TABLE runs ADD COLUMN inputs_hash TEXT")
+        for col in ("inputs_hash", "role", "founder_person_id", "email_json"):
+            if col not in cols:
+                c.execute(f"ALTER TABLE runs ADD COLUMN {col} TEXT")
         c.execute("CREATE INDEX IF NOT EXISTS runs_inputs_hash ON runs(inputs_hash, created_at)")
         c.commit()
 
@@ -112,10 +117,12 @@ def create_run(run_id: str, idem_key: str, inputs: dict, call_mode: str,
         ts = now()
         c.execute(
             "INSERT INTO runs (run_id, idem_key, inputs_hash, vc_name, vc_phone, "
-            "founder_name, founder_company, call_mode, status, result_json, error, "
-            "created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "founder_name, founder_company, role, founder_person_id, call_mode, status, "
+            "result_json, error, created_at, updated_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (run_id, idem_key, inputs_hash, inputs.get("vc_name"), inputs.get("vc_phone"),
-             inputs.get("founder_name"), inputs.get("founder_company"), call_mode,
+             inputs.get("founder_name"), inputs.get("founder_company"),
+             inputs.get("role") or None, inputs.get("founder_person_id") or None, call_mode,
              "running", None, None, ts, ts),
         )
         for i, s in enumerate(steps):
@@ -160,6 +167,24 @@ def update_run(run_id: str, *, status: str | None = None,
         sets.append("updated_at=?"); vals.append(now())
         vals.append(run_id)
         c.execute(f"UPDATE runs SET {', '.join(sets)} WHERE run_id=?", vals)
+        c.commit()
+
+
+def get_email(run_id: str) -> dict | None:
+    """The stored founder-email record ({state, ...}) or None if never attempted."""
+    with _LOCK:
+        row = _conn().execute(
+            "SELECT email_json FROM runs WHERE run_id=?", (run_id,)
+        ).fetchone()
+    return _loads(row["email_json"]) if row else None
+
+
+def set_email(run_id: str, email: dict) -> None:
+    """Persist the founder-email record (written before AND after the send)."""
+    with _LOCK:
+        c = _conn()
+        c.execute("UPDATE runs SET email_json=?, updated_at=? WHERE run_id=?",
+                  (json.dumps(email), now(), run_id))
         c.commit()
 
 
@@ -217,8 +242,11 @@ def get_run(run_id: str) -> dict | None:
             "vc_phone": r["vc_phone"],
             "founder_name": r["founder_name"],
             "founder_company": r["founder_company"],
+            "role": r["role"] or "",
+            "founder_person_id": r["founder_person_id"] or None,
         },
         "result": _loads(r["result_json"]),
+        "email_sent": (_loads(r["email_json"]) or {}).get("state") == "sent",
         "error": r["error"],
         "created_at": r["created_at"],
         "updated_at": r["updated_at"],

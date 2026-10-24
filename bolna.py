@@ -1,10 +1,11 @@
 """
-bolna.py — thin Bolna voice-call client for Backchannel (Phase 1).
+bolna.py — thin Bolna voice-call client for Backchannel.
 
 Only what the orchestrator needs:
-  * place_call(agent_id, phone)      -> {"status","execution_id", ...}
+  * place_call(agent_id, phone, user_data=...) -> {"status","execution_id", ...}
   * get_execution(execution_id)      -> {"status","transcript", ...}
   * parse_transcript(flat_string)    -> {"qa":[{"q","a"}, ...]}
+  * normalize_phone(raw)             -> "+919800000000" (for allowlist checks)
 
 The API key is read from the environment ONLY (BOLNA_API_KEY) — never hardcoded,
 never logged. Source your Bolna env file (default ~/.bolna.env) before running.
@@ -13,6 +14,12 @@ Proven on a real +91 call:
   POST https://api.bolna.ai/call        body {agent_id, recipient_phone_number}
   GET  https://api.bolna.ai/executions/{execution_id}
 Both take header  Authorization: Bearer $BOLNA_API_KEY
+
+Per-call context (Phase 2): POST /call accepts `user_data`, an object whose keys
+fill {{placeholders}} in the agent's system prompt AND welcome message. The VC and
+founder agents (setup_agents.py) are written against those placeholders.
+
+BOLNA_BASE_URL overrides the API origin (tests point it at a local fake).
 """
 
 from __future__ import annotations
@@ -23,7 +30,7 @@ from typing import Any
 
 import requests
 
-BASE_URL = "https://api.bolna.ai"
+BASE_URL = os.environ.get("BOLNA_BASE_URL", "https://api.bolna.ai").rstrip("/")
 # The pre-created "reference-checker" agent (gpt-4o-mini + alloy TTS + nova-2).
 DEFAULT_AGENT_ID = "8570f965-a837-472b-9f6d-215ef5200162"
 
@@ -41,9 +48,23 @@ def _headers() -> dict[str, str]:
     return {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
 
 
-def place_call(agent_id: str, phone: str, *, timeout: int = 30) -> dict[str, Any]:
-    """POST /call — trigger a real outbound call. Returns {status, execution_id, ...}."""
-    body = {"agent_id": agent_id, "recipient_phone_number": phone}
+def normalize_phone(raw: str | None) -> str:
+    """'+91 98000-00000' -> '+919800000000'. Keeps a leading + and the digits only."""
+    s = (raw or "").strip()
+    digits = re.sub(r"\D", "", s)
+    if not digits:
+        return ""
+    return ("+" if s.startswith("+") else "") + digits
+
+
+def place_call(agent_id: str, phone: str, *, user_data: dict[str, Any] | None = None,
+               timeout: int = 30) -> dict[str, Any]:
+    """POST /call — trigger a real outbound call. Returns {status, execution_id, ...}.
+
+    user_data fills {{placeholders}} in the agent's prompt + welcome message."""
+    body: dict[str, Any] = {"agent_id": agent_id, "recipient_phone_number": phone}
+    if user_data:
+        body["user_data"] = user_data
     try:
         resp = requests.post(
             f"{BASE_URL}/call", headers=_headers(), json=body, timeout=timeout

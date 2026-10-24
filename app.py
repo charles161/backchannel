@@ -1,9 +1,13 @@
 """
-app.py — Backchannel FastAPI orchestrator + UI (Phase 1).
+app.py — Backchannel FastAPI orchestrator + UI.
 
 Routes:
   GET  /                     -> the single-page UI (web/index.html)
   POST /run                  -> start (or dedupe to) a run; returns {run_id, existing}
+                                optional: role (what the VC is hiring/funding for),
+                                founder_person_id (a candidate picked from /search)
+  POST /search               -> {role, limit?} -> ranked candidates to pick from
+                                (Crustdata NL person/search; read-only, cached)
   GET  /run/{run_id}         -> full persisted state (resume / polling fallback)
   GET  /run/{run_id}/events  -> SSE: snapshot FIRST, then live step/transcript events
   GET  /healthz              -> liveness + call mode + demo form defaults
@@ -21,7 +25,9 @@ Dedupe (POST /run):
   * the rate limit is checked AFTER dedupe, so a retry never burns the budget.
 
 Optional access control: if BACKCHANNEL_DEMO_TOKEN is set, POST /run requires it
-(open the UI as /?token=...). Only one live call may run at a time.
+(open the UI as /?token=...). Only one live run may be in progress at a time, and a
+live run is refused up front unless all three numbers (reference, VC, founder) are on
+the verified allowlist — so it can never fail halfway after spending a call.
 """
 
 from __future__ import annotations
@@ -38,6 +44,7 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 
+import candidates
 import db
 import pipeline
 
@@ -50,13 +57,15 @@ app = FastAPI(title="Backchannel", docs_url=None, redoc_url=None)
 _RATE_MAX = 5
 _RATE_WINDOW_S = 60.0
 _rate_hits: dict[str, deque] = defaultdict(deque)
+_search_hits: dict[str, deque] = defaultdict(deque)   # POST /search: its own bucket
 _DEDUPE_RECENT_S = 120.0
+_SEARCH_TIMEOUT_S = 45.0
 DEMO_TOKEN = os.environ.get("BACKCHANNEL_DEMO_TOKEN", "").strip()
 
 
-def _rate_limited(ip: str) -> bool:
+def _rate_limited(ip: str, hits: dict[str, deque] = _rate_hits) -> bool:
     now = time.time()
-    dq = _rate_hits[ip]
+    dq = hits[ip]
     while dq and now - dq[0] > _RATE_WINDOW_S:
         dq.popleft()
     if len(dq) >= _RATE_MAX:
@@ -73,11 +82,24 @@ def _inputs_hash(inputs: dict, mode: str) -> str:
         (inputs.get("founder_company") or "").strip().lower(),
         mode,
     ])
+    # appended only when set, so role-less runs keep the hash they always had
+    role = " ".join((inputs.get("role") or "").lower().split())
+    if role:
+        norm += "|role:" + role
+    if inputs.get("founder_person_id"):
+        norm += f"|pid:{inputs['founder_person_id']}"
     return hashlib.sha256(norm.encode()).hexdigest()[:24]
 
 
-def _err(status: int, code: str, detail: str) -> JSONResponse:
-    return JSONResponse({"error": code, "detail": detail}, status_code=status)
+def _err(status: int, code: str, detail: str, **extra) -> JSONResponse:
+    return JSONResponse({"error": code, "detail": detail, **extra}, status_code=status)
+
+
+def _token_ok(body: dict, request: Request) -> bool:
+    if not DEMO_TOKEN:
+        return True
+    given = str(body.get("demo_token") or request.headers.get("x-demo-token") or "")
+    return hmac.compare_digest(given.encode(), DEMO_TOKEN.encode())
 
 
 def _existing(run_id: str) -> dict:
@@ -99,6 +121,8 @@ async def healthz():
         "ok": True,
         "call_mode": pipeline.CALL_MODE,
         "token_required": bool(DEMO_TOKEN),
+        "crustdata_live": pipeline.crust_live(),
+        "email_configured": pipeline.invite.config() is not None,
         # stage form defaults come from env (.env.local), never from the repo
         "defaults": {
             "vc_name": os.environ.get("BACKCHANNEL_DEMO_VC_NAME", "").strip(),
@@ -123,16 +147,19 @@ async def start_run(request: Request):
     if not isinstance(body, dict):
         body = {}
 
-    if DEMO_TOKEN:
-        given = str(body.get("demo_token") or request.headers.get("x-demo-token") or "")
-        if not hmac.compare_digest(given.encode(), DEMO_TOKEN.encode()):
-            return _err(403, "forbidden", "This demo needs its access link (…/?token=…).")
+    if not _token_ok(body, request):
+        return _err(403, "forbidden", "This demo needs its access link (…/?token=…).")
 
+    pid = pipeline._person_id(body.get("founder_person_id"))
     inputs = {
         "vc_name": str(body.get("vc_name") or "").strip()[:120],
         "vc_phone": str(body.get("vc_phone") or "").strip()[:40],
         "founder_name": pipeline.canonical_founder(str(body.get("founder_name") or "")[:120]),
         "founder_company": str(body.get("founder_company") or "").strip()[:120],
+        # what the VC is hiring/funding for: steers the call questions + the fit verdict
+        "role": candidates.normalize_role(body.get("role")),
+        # a candidate picked from POST /search: resolve exactly this person
+        "founder_person_id": str(pid) if pid else "",
     }
     if not inputs["founder_name"]:
         return _err(400, "missing_founder", "Enter the founder's name to check.")
@@ -156,7 +183,13 @@ async def start_run(request: Request):
         if in_flight or just_done:
             return _existing(recent["run_id"])
 
-    # 3) only genuinely new runs count against the rate limit.
+    # 3) a live run that can't finish its 3-call chain is refused before any call
+    #    (and before it costs a rate-limit slot).
+    if mode == "live":
+        problem = pipeline.live_preflight(inputs)
+        if problem:
+            return _err(400, "live_not_ready", problem)
+    # 4) only genuinely new runs count against the rate limit.
     if _rate_limited(ip):
         return _err(429, "rate_limited",
                     f"Too many checks in a minute (max {_RATE_MAX}). Wait a moment and retry.")
@@ -170,6 +203,49 @@ async def start_run(request: Request):
                   pipeline.initial_steps(inputs["founder_name"]), inputs_hash=ihash)
     pipeline.ensure_running(run_id, fresh=True, mode=mode)
     return {"run_id": run_id, "existing": False}
+
+
+@app.post("/search")
+async def search(request: Request):
+    """{role, limit?} -> {role, candidates: [{name, title, company, linkedin, headline,
+    why_fit, fit, location, person_id, rank}], count, message, source, cached}.
+
+    Read-only. Never a 500: every failure is an empty list + a human `message`. A
+    cached role is answered before the rate limit, so a repeat never burns budget."""
+    import asyncio
+
+    ip = request.client.host if request.client else "?"
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    if not isinstance(body, dict):
+        body = {}
+    role = candidates.normalize_role(body.get("role"))
+    empty = {"role": role, "candidates": [], "count": 0}
+    if not _token_ok(body, request):
+        return _err(403, "forbidden", "This demo needs its access link (…/?token=…).",
+                    message="This demo needs its access link.", **empty)
+    if not role:
+        return _err(400, "missing_role", "Describe the role or thesis to search for.",
+                    message="Describe the role or thesis to search for.", **empty)
+    try:
+        limit = int(body.get("limit") or candidates.DEFAULT_LIMIT)
+    except (TypeError, ValueError):
+        limit = candidates.DEFAULT_LIMIT
+    try:
+        client = pipeline.make_crust()
+        if not candidates._cache_path(role).exists() and _rate_limited(ip, _search_hits):
+            return _err(429, "rate_limited",
+                        f"Too many searches in a minute (max {_RATE_MAX}). Wait a moment.",
+                        message="Too many searches in a minute. Wait a moment.", **empty)
+        return await asyncio.wait_for(
+            asyncio.to_thread(candidates.search, client, role, limit),
+            timeout=_SEARCH_TIMEOUT_S)
+    except Exception as e:  # noqa: BLE001 — never a 500
+        print(f"[backchannel] /search error: {type(e).__name__}: {e}", flush=True)
+        return {**empty, "message": "Search is unavailable right now. Type a name instead.",
+                "source": None}
 
 
 @app.get("/run/{run_id}")

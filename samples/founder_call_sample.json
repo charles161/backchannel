@@ -1,0 +1,23 @@
+{
+  "fictional": true,
+  "channel": "phone (simulated — mock mode)",
+  "note": "FICTIONAL sample of call 3 (the agent calls the founder, pitches the investor's interest, matches the founder's availability to the VC's slots and confirms a time), used by mock mode. No real person said any of this. Placeholders in {braces} are filled at runtime (the founder's first name, the investor's name and pitch, the VC's extracted slots); the founder's answers are a scripted simulation, labelled as such in the UI. `expected` is what time extraction falls back to if the gateway is slow or down.",
+  "qa": [
+    {
+      "q": "Hi {founder_first}, I'm an AI assistant calling on behalf of {vc_display}. {pitch_sentence} Do you have a minute?",
+      "a": "Oh, great to hear. Sure, go ahead."
+    },
+    {
+      "q": "They're free {vc_slots_phrase}. Does either of those work for you?",
+      "a": "Thursday at 3 works great."
+    },
+    {
+      "q": "Perfect, that's Thursday at 3:00 PM. I'll confirm it with {vc_short} and you'll both get a note. Anything else before I let you go?",
+      "a": "No, that's it. Thanks!"
+    }
+  ],
+  "expected": {
+    "confirmed": true,
+    "time": "Thursday 3:00 PM"
+  }
+}

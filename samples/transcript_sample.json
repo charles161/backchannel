@@ -27,6 +27,12 @@
       "a": "Without hesitation. If I were starting something, I'd try to hire them."
     }
   ],
+  "role_turn": {
+    "note": "Used only when the run has a role (what the VC is hiring/funding for). '{role}' is the VC's own words. Fictional, like the rest of this script.",
+    "opening": "Quick context: we're evaluating {first_name} for {role}.",
+    "q": "On the role itself — {role} — how well would {first_name} fit it, from what you saw?",
+    "a": "For that, I'd bet on the ownership and the judgement under pressure — they took a book end to end and grew it, and they stayed calm when things were on fire. The question mark is scale: they'd need to hire and delegate early instead of carrying everything themselves."
+  },
   "signals": {
     "confirmed_claims": [
       "Owned the regional customer success book end-to-end",

@@ -1,8 +1,10 @@
 """
 report.py — reference-report synthesizer (REAL LLM).
 
-synthesize(candidate, referee, transcript) turns a reference-call transcript into a
-structured, sourced report using our Vercel AI Gateway:
+synthesize(candidate, referee, transcript, role=None) turns a reference-call transcript
+into a structured, sourced report using our Vercel AI Gateway. When `role` (what the
+evaluator is hiring/funding the candidate for) is given, the verdict is a FIT verdict
+for that role and the report carries a `role_fit` assessment:
 
   - Haiku (anthropic/claude-haiku-5.5) GENERATES the report body as strict JSON:
     relationship, claims_confirmed, strengths, concerns, recommendation.
@@ -28,6 +30,7 @@ import gateway
 
 _VALID_TIERS = {"STRONG HIRE", "HIRE", "LEAN HIRE", "NO HIRE"}
 _VALID_CONF = {"high", "medium", "low"}
+_VALID_FIT = {"strong", "moderate", "weak", "unclear"}
 
 
 # ---------------------------------------------------------------------------
@@ -135,7 +138,23 @@ _GEN_SYSTEM = (
 )
 
 
-def _gen_user(candidate: dict, referee: dict, transcript: dict) -> str:
+_ROLE_SYSTEM = (
+    "\n\nThe evaluator is considering the candidate for a SPECIFIC ROLE (given below). "
+    "Judge FIT for that role, not general quality: the recommendation tier and its "
+    "rationale must reflect how well the evidence supports the candidate in that role "
+    "(name the role in the rationale). Add one more key:\n"
+    '  "role_fit": object {"fit": one of "strong"|"moderate"|"weak"|"unclear", '
+    '"rationale": one sentence tying specific transcript evidence to the role}. Use '
+    '"unclear" when the transcript says little that bears on the role.'
+)
+
+
+def _role_text(role: str | None) -> str:
+    return " ".join(str(role or "").split())[:300]
+
+
+def _gen_user(candidate: dict, referee: dict, transcript: dict,
+              role: str | None = None) -> str:
     qa_lines = []
     for i, turn in enumerate(transcript.get("qa") or [], 1):
         qa_lines.append(f"Q{i}: {turn.get('q', '')}\nA{i}: {turn.get('a', '')}")
@@ -154,8 +173,11 @@ def _gen_user(candidate: dict, referee: dict, transcript: dict) -> str:
         f"current title: {candidate.get('current_title') or 'n/a'}\n"
         f"linkedin: {candidate.get('linkedin_url') or 'n/a'}"
     )
+    role_t = _role_text(role)
+    role_block = f"ROLE BEING EVALUATED FOR: {role_t}\n\n" if role_t else ""
     return (
         f"CANDIDATE (what we are verifying):\n{cand_block}\n\n"
+        f"{role_block}"
         f"REFEREE (off-list, vouched):\n{ref_block}\n\n"
         f"REFERENCE-CALL TRANSCRIPT:\n{qa_text}\n\n"
         "Produce the strict JSON report now."
@@ -176,6 +198,16 @@ def _normalize_recommendation(rec: Any, referee: dict, signals: dict) -> dict:
     return {"tier": tier, "verdict": tier, "confidence": conf, "rationale": rationale}
 
 
+def _normalize_role_fit(v: Any) -> dict:
+    """Coerce Haiku's `role_fit` into {"fit", "rationale"} (fit defaults to unclear)."""
+    if not isinstance(v, dict):
+        return {"fit": "unclear", "rationale": "The call didn't say enough about this role."}
+    fit = str(v.get("fit") or "").strip().lower()
+    rationale = str(v.get("rationale") or "").strip()
+    return {"fit": fit if fit in _VALID_FIT else "unclear",
+            "rationale": rationale or "The call didn't say enough about this role."}
+
+
 def _as_str_list(v: Any) -> list[str]:
     if isinstance(v, list):
         return [str(x).strip() for x in v if str(x).strip()]
@@ -185,15 +217,17 @@ def _as_str_list(v: Any) -> list[str]:
 
 
 def _generate_body(candidate: dict, referee: dict, transcript: dict,
-                   signals: dict, relationship: str) -> tuple[dict, bool]:
+                   signals: dict, relationship: str,
+                   role: str | None = None) -> tuple[dict, bool]:
     """Return (body, used_haiku). On failure, returns (template_body, False)."""
     model = os.environ.get("HAIKU_MODEL", "anthropic/claude-haiku-5.5")
-    user = _gen_user(candidate, referee, transcript)
+    user = _gen_user(candidate, referee, transcript, role)
+    system = _GEN_SYSTEM + (_ROLE_SYSTEM if _role_text(role) else "")
 
     attempts = [
-        [{"role": "system", "content": _GEN_SYSTEM},
+        [{"role": "system", "content": system},
          {"role": "user", "content": user}],
-        [{"role": "system", "content": _GEN_SYSTEM},
+        [{"role": "system", "content": system},
          {"role": "user", "content": user},
          {"role": "user", "content": "Your previous reply was not valid JSON. "
           "Return ONLY the valid JSON object, no prose, no code fences."}],
@@ -216,9 +250,14 @@ def _generate_body(candidate: dict, referee: dict, transcript: dict,
             "recommendation": _normalize_recommendation(
                 parsed.get("recommendation"), referee, signals),
         }
+        if _role_text(role):
+            body["role_fit"] = _normalize_role_fit(parsed.get("role_fit"))
         return body, True
 
-    return _fallback_body(signals, referee, relationship), False
+    body = _fallback_body(signals, referee, relationship)
+    if _role_text(role):
+        body["role_fit"] = _normalize_role_fit(None)
+    return body, False
 
 
 # ---------------------------------------------------------------------------
@@ -339,12 +378,15 @@ def _haiku_subscores(candidate: dict, referee: dict, transcript: dict) -> dict[s
 # public entrypoint
 # ---------------------------------------------------------------------------
 
-def synthesize(candidate: dict, referee: dict, transcript: dict) -> dict:
+def synthesize(candidate: dict, referee: dict, transcript: dict,
+               role: str | None = None) -> dict:
     """Return a structured reference report, generated by Haiku + scored by Jev.
 
     candidate : {"name", "linkedin_url", "current_title"} (what we claim to verify)
     referee   : a record from overlap.find_offlist_references (who vouched)
     transcript: a reference-call transcript dict (see samples/)
+    role      : optional — what the candidate is being hired/funded for; makes the
+                verdict a fit-for-role verdict and adds report["role_fit"]
     """
     signals = transcript.get("signals") or {}
 
@@ -359,7 +401,7 @@ def synthesize(candidate: dict, referee: dict, transcript: dict) -> dict:
 
     # 1) Haiku generates the report body (the primary pass).
     body, used_haiku = _generate_body(
-        candidate, referee, transcript, signals, relationship)
+        candidate, referee, transcript, signals, relationship, role)
 
     # 2) Jev scores the three sub-scores (best-effort; never blocks step 1).
     sub_scores = _jev_subscores(candidate, referee, transcript, signals)
@@ -398,6 +440,8 @@ def synthesize(candidate: dict, referee: dict, transcript: dict) -> dict:
         "recommendation": body["recommendation"],
         "sub_scores": sub_scores,
         "synthesis_mode": synthesis_mode,
+        "role": _role_text(role) or None,
+        "role_fit": body.get("role_fit"),
         "provenance": {
             "evidence": "employment-overlap graph (live Crustdata)",
             "overlap_window": window,

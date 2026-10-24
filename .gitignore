@@ -20,3 +20,8 @@ __pycache__/
 *.pyo
 .venv/
 venv/
+# redundant UI artifacts (index.html is the live one)
+web/layout-a.html
+web/layout-b.html
+web/index.redesign.html
+web/index.phase2-backup.html

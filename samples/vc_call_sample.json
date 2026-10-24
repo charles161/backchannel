@@ -1,0 +1,31 @@
+{
+  "fictional": true,
+  "channel": "phone (simulated — mock mode)",
+  "note": "FICTIONAL sample of call 2 (the agent calls the VC back with the verdict and asks for their availability), used by mock mode. No real person said any of this. Placeholders in {braces} are filled at runtime from the run itself (the VC's first name, the founder's first name, the verdict and its highlights), so the agent's lines always match the real verdict; the VC's answers are a scripted simulation, labelled as such in the UI. `expected` is what slot extraction falls back to if the gateway is slow or down.",
+  "qa": [
+    {
+      "q": "Hi {vc_first}, it's the Backchannel agent calling back about {founder_first}. Do you have a minute for the verdict?",
+      "a": "Yes, go ahead."
+    },
+    {
+      "q": "I spoke with a former colleague who worked with {founder_first} for {overlap_months} months. Our read is {verdict_phrase}. What stood out: {highlight_1}, and {highlight_2}.",
+      "a": "{vc_reaction} Anything that worried them?"
+    },
+    {
+      "q": "{concern_line}",
+      "a": "Okay, good to know. I'd like to meet {founder_first}."
+    },
+    {
+      "q": "Great. When are you free to meet {founder_first} this week?",
+      "a": "Thursday or Friday afternoon works for me."
+    },
+    {
+      "q": "Got it, Thursday or Friday afternoon. I'll call {founder_first} now and lock in a time.",
+      "a": "Perfect, thanks."
+    }
+  ],
+  "expected": {
+    "wants_meeting": true,
+    "slots": ["Thursday afternoon", "Friday afternoon"]
+  }
+}

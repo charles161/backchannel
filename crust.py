@@ -9,8 +9,12 @@ Design goals (this is a hackathon spike, not prod):
   * Tracks how many real API calls vs cache hits we made, so the CLI can print it.
 
 Only two endpoints are used by the pipeline:
-  * POST /person/search   (ref doc §1) — discovery of colleagues
+  * POST /person/search   (ref doc §1) — discovery of colleagues, plus the beta
+                          natural-language `search` object (role -> candidates)
   * POST /person/enrich   (ref doc §2) — full profile for a known LinkedIn URL
+
+Every failure — a non-200, a dropped connection, a timeout, a non-JSON body —
+surfaces as CrustError, so callers can degrade gracefully instead of crashing.
 
 Autocomplete (POST /person/search/autocomplete, FREE) is exposed for filter-value
 validation without spending search credits.
@@ -80,7 +84,12 @@ class Crust:
             return json.loads(path.read_text())
 
         url = f"{BASE_URL}{endpoint}"
-        resp = self.session.post(url, headers=self._headers(), json=body, timeout=self.timeout)
+        try:
+            resp = self.session.post(url, headers=self._headers(), json=body,
+                                     timeout=self.timeout)
+        except requests.RequestException as e:
+            self.call_log.append({"endpoint": endpoint, "source": "api", "status": "network"})
+            raise CrustError(f"{endpoint} -> network error: {type(e).__name__}") from None
         self.api_calls += 1
         remaining = resp.headers.get("x-ratelimit-remaining")
         credits = resp.headers.get("x-credits-used")
@@ -100,7 +109,10 @@ class Crust:
                 f"{endpoint} -> HTTP {resp.status_code}: {resp.text[:500]}"
             )
 
-        data = resp.json()
+        try:
+            data = resp.json()
+        except ValueError:
+            raise CrustError(f"{endpoint} -> HTTP 200 with a non-JSON body") from None
         if cache:
             path.write_text(json.dumps(data, indent=2))
         return data
@@ -116,6 +128,27 @@ class Crust:
         if limit > 10:
             raise CrustError("Refusing limit > 10 during the spike (credit guard).")
         body = {"filters": {"op": op, "conditions": conditions}, "limit": limit}
+        return self._post("/person/search", body)
+
+    def search_people_nl(self, query: str, limit: int = 8, *,
+                         conditions: list[dict] | None = None,
+                         fields: list[str] | None = None, mode: str = "hybrid") -> dict:
+        """POST /person/search with the beta natural-language `search` object.
+
+        Crustdata ranks people against `query` (hybrid = keyword + semantic) and tags
+        each head profile with a `fit` tier (strong | possible | weak). Optional
+        `conditions` are extra structured filters; in the default `managed` recall
+        mode they steer recall/ranking rather than act as hard constraints.
+        Same price as a filter search: ~0.03 credits per returned result.
+        """
+        if limit > 10:
+            raise CrustError("Refusing limit > 10 during the spike (credit guard).")
+        body: dict[str, Any] = {"search": {"query": query, "mode": mode}, "limit": limit}
+        if conditions:
+            body["filters"] = (conditions[0] if len(conditions) == 1
+                               else {"op": "and", "conditions": conditions})
+        if fields:
+            body["fields"] = fields
         return self._post("/person/search", body)
 
     def enrich_person(

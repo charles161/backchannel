@@ -11,10 +11,11 @@
 ## The flow
 
 **1. VC starts a check.**
-Enters their **name**, **phone number**, and the **founder** to check. One pane per founder (can run several).
+Enters their **name**, **phone number**, and **what they're hiring/funding for** (the role or thesis — required; it steers the search, the call questions, and the fit verdict). Plus, optionally, a **specific person** to check. One pane per check (can run several).
 
-**2. Pick the founder.**
-Already has someone → type the name (or upload details/a deck). Or search and select.
+**2. Pick the person — two ways:**
+- **You already have someone** → type the name (or upload a deck/details) → straight to the backchannel.
+- **You don't** → leave the name blank → the agent **searches** (Crustdata person/search using the role/thesis) → returns a **ranked list of matching people** (name · title · company · why they fit) → you **select one** → backchannel them.
 
 **3. VC says: "Verify him — is this someone I should fund?"**
 Optionally uploads the founder's deck / claims to check against.
