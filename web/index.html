@@ -1,0 +1,401 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Backchannel</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#f6f6f3; --card:#ffffff; --ink:#17171a; --muted:#8b8b93; --faint:#b9b9c0;
+    --line:#ececec; --line2:#f2f2f2; --accent:#5b4bff; --accent-soft:#eceaff;
+    --green:#15a35b; --green-soft:#e6f6ee; --amber:#d58512; --amber-soft:#fbf1df;
+    --red:#dd3b3b; --red-soft:#fbe9e9;
+    --shadow:0 1px 2px rgba(20,20,40,.04),0 12px 32px rgba(20,20,40,.06);
+    --radius:18px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:"Inter",system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+    -webkit-font-smoothing:antialiased;line-height:1.5}
+  a{color:var(--accent)}
+  .wrap{max-width:720px;margin:0 auto;padding:40px 16px 80px}
+  header.top{display:flex;align-items:center;gap:10px;margin-bottom:34px}
+  .mark{width:26px;height:26px;border-radius:8px;background:var(--accent);position:relative;flex:none}
+  .mark::after{content:"";position:absolute;inset:7px;border:2px solid #fff;border-radius:50%;border-right-color:transparent;transform:rotate(25deg)}
+  .brand{font-weight:700;letter-spacing:-.02em;font-size:18px}
+  .brand small{display:block;font-weight:500;color:var(--muted);font-size:12.5px;letter-spacing:0}
+  .screen{display:none;animation:fade .4s ease}
+  .screen.active{display:block}
+  @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow)}
+
+  /* ---- start ---- */
+  .hero h1{font-size:30px;letter-spacing:-.03em;margin:0 0 8px}
+  .hero p.sub{color:var(--muted);margin:0 0 26px;font-size:15px;max-width:52ch}
+  form .card{padding:26px 24px}
+  .field{margin-bottom:18px}
+  .field:last-of-type{margin-bottom:0}
+  label{display:block;font-size:12.5px;font-weight:600;color:var(--muted);margin-bottom:7px;letter-spacing:.01em}
+  .row2{display:flex;gap:14px}
+  .row2 .field{flex:1}
+  input{width:100%;padding:12px 14px;border:1px solid var(--line);border-radius:12px;font:inherit;
+    font-size:15px;background:#fff;color:var(--ink);transition:border .15s,box-shadow .15s}
+  input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+  .hint{font-size:12px;color:var(--faint);margin-top:6px}
+  .btn{appearance:none;border:0;cursor:pointer;font:inherit;font-weight:600;border-radius:12px;
+    padding:13px 20px;background:var(--accent);color:#fff;font-size:15px;transition:transform .08s,opacity .15s,background .15s}
+  .btn:hover{background:#4a3bf0}
+  .btn:active{transform:translateY(1px)}
+  .btn:disabled{opacity:.55;cursor:default}
+  .btn.block{width:100%;margin-top:24px}
+  .btn.ghost{background:transparent;color:var(--accent);border:1px solid var(--line)}
+  .btn.ghost:hover{background:var(--accent-soft)}
+  .mode-tag{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;
+    padding:4px 10px;border-radius:999px;background:var(--line2);color:var(--muted)}
+  .mode-tag b{color:var(--ink)}
+
+  /* ---- live ---- */
+  .closenote{color:var(--muted);font-size:13.5px;margin:0 0 18px;display:flex;align-items:center;gap:8px}
+  .closenote::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 0 4px var(--green-soft);animation:pulse 1.8s infinite}
+  @keyframes pulse{50%{box-shadow:0 0 0 7px rgba(21,163,91,0)}}
+  .banner{display:none;align-items:center;gap:12px;background:var(--accent);color:#fff;
+    padding:14px 18px;border-radius:14px;margin-bottom:18px;font-weight:600;box-shadow:var(--shadow)}
+  .banner.show{display:flex}
+  .banner .ring{width:16px;height:16px;border-radius:50%;border:2.5px solid rgba(255,255,255,.4);border-top-color:#fff;animation:spin 1s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .timeline{padding:10px 6px}
+  .step{display:flex;gap:16px;padding:14px 18px;position:relative}
+  .rail{display:flex;flex-direction:column;align-items:center;flex:none}
+  .dot{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+    font-size:14px;font-weight:700;background:#fff;border:2px solid var(--line);color:var(--faint);transition:.25s}
+  .line{flex:1;width:2px;background:var(--line);margin:4px 0;min-height:10px}
+  .step:last-child .line{display:none}
+  .step .body{flex:1;padding-top:2px;min-width:0}
+  .step .lbl{font-weight:600;font-size:15px;letter-spacing:-.01em;transition:.2s}
+  .step .res{font-size:13.5px;color:var(--muted);margin-top:3px;word-wrap:break-word}
+  .step[data-status="pending"] .lbl{color:var(--faint)}
+  .step[data-status="active"] .dot{border-color:var(--accent);color:var(--accent)}
+  .step[data-status="active"] .lbl{color:var(--ink)}
+  .step[data-status="active"] .dot .sp{width:12px;height:12px;border-radius:50%;border:2px solid var(--accent-soft);border-top-color:var(--accent);animation:spin .8s linear infinite}
+  .step[data-status="done"] .dot{border-color:var(--green);background:var(--green);color:#fff}
+  .step[data-status="error"] .dot{border-color:var(--red);background:var(--red);color:#fff}
+  .step[data-status="phase2"] .dot{border-style:dashed;border-color:var(--faint)}
+  .step[data-status="phase2"] .lbl{color:var(--faint)}
+  .chip{display:inline-block;font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;
+    padding:2px 7px;border-radius:6px;background:var(--line2);color:var(--muted);margin-left:8px;vertical-align:middle}
+
+  /* transcript */
+  .transcript{margin-top:12px;border:1px solid var(--line);border-radius:14px;background:#fcfcfe;
+    padding:4px 0;max-height:360px;overflow:auto;display:none}
+  .transcript.show{display:block}
+  .turn{padding:10px 16px}
+  .turn .who{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--faint);margin-bottom:3px}
+  .turn.q .who{color:var(--accent)}
+  .turn .txt{font-size:14px;color:var(--ink)}
+  .turn.a{background:var(--line2);border-radius:10px;margin:2px 10px}
+  .typing{display:inline-flex;gap:3px;padding:4px 0}
+  .typing i{width:5px;height:5px;border-radius:50%;background:var(--faint);animation:bob 1.2s infinite}
+  .typing i:nth-child(2){animation-delay:.2s}.typing i:nth-child(3){animation-delay:.4s}
+  @keyframes bob{0%,60%,100%{opacity:.3;transform:translateY(0)}30%{opacity:1;transform:translateY(-3px)}}
+
+  /* ---- result ---- */
+  .verdict{padding:30px 26px;text-align:center}
+  .vbadge{display:inline-block;font-size:34px;font-weight:700;letter-spacing:-.02em;padding:8px 26px;border-radius:16px;margin-bottom:10px}
+  .vbadge.FUND{background:var(--green-soft);color:var(--green)}
+  .vbadge.LEAN{background:var(--amber-soft);color:var(--amber)}
+  .vbadge.PASS{background:var(--red-soft);color:var(--red)}
+  .vconf{font-size:13.5px;color:var(--muted);text-transform:capitalize}
+  .vrat{font-size:14.5px;color:var(--ink);max-width:56ch;margin:14px auto 0;line-height:1.55}
+  .sec{padding:22px 26px;border-top:1px solid var(--line)}
+  .sec h3{font-size:12.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin:0 0 14px}
+  .who-line{font-size:14.5px}.who-line b{font-weight:600}
+  .who-line .rel{color:var(--muted);font-size:13.5px;margin-top:4px}
+  .scores{display:grid;gap:12px}
+  .score .top{display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px}
+  .score .top .v{font-weight:700}
+  .bar{height:8px;border-radius:999px;background:var(--line2);overflow:hidden}
+  .bar>i{display:block;height:100%;border-radius:999px;background:var(--accent);transition:width .8s cubic-bezier(.2,.8,.2,1)}
+  ul.pts{margin:0;padding:0;list-style:none}
+  ul.pts li{position:relative;padding:5px 0 5px 22px;font-size:14px}
+  ul.pts li::before{position:absolute;left:0;top:5px;font-weight:700}
+  ul.pts.good li::before{content:"+";color:var(--green)}
+  ul.pts.bad li::before{content:"\2013";color:var(--amber)}
+  pre.email{white-space:pre-wrap;font:inherit;font-size:13.5px;color:var(--ink);background:var(--line2);
+    border-radius:12px;padding:16px;margin:0;line-height:1.55}
+  .meeting{display:flex;gap:12px;align-items:flex-start;background:var(--line2);border-radius:12px;padding:14px 16px;font-size:13.5px;color:var(--muted)}
+  .meeting b{color:var(--ink)}
+  .actions{display:flex;gap:12px;flex-wrap:wrap;padding:22px 26px;border-top:1px solid var(--line)}
+  .toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(20px);opacity:0;
+    background:var(--ink);color:#fff;padding:11px 18px;border-radius:12px;font-size:13.5px;font-weight:500;
+    transition:.25s;pointer-events:none;z-index:50}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .err{background:var(--red-soft);color:var(--red);border:1px solid #f3cfcf;padding:12px 16px;border-radius:12px;font-size:13.5px;margin-bottom:16px;display:none}
+  .err.show{display:block}
+  .err .btn{margin-top:10px;padding:9px 16px;font-size:14px}
+  .sim{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
+    padding:2px 8px;border-radius:6px;background:var(--amber-soft);color:var(--amber);margin-left:6px;vertical-align:middle}
+  @media(max-width:560px){.row2{flex-direction:column;gap:0}.wrap{padding-top:26px}.hero h1{font-size:25px}.vbadge{font-size:28px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="mark"></div>
+    <div class="brand">Backchannel<small>founder diligence, done on the phone</small></div>
+  </header>
+
+  <!-- ============ SCREEN 1 : START ============ -->
+  <section id="start" class="screen">
+    <div class="hero">
+      <h1>Verify a founder before you wire.</h1>
+      <p class="sub">The agent finds the founder's ex-colleagues, calls the one who actually
+        worked with them, and comes back with a verdict &mdash; live, on a real phone call.</p>
+    </div>
+    <form id="form">
+      <div class="card">
+        <div class="row2">
+          <div class="field">
+            <label>Your name</label>
+            <input id="vc_name" placeholder="Your name" autocomplete="off">
+          </div>
+          <div class="field">
+            <label>Your phone (so the agent can call you back)</label>
+            <input id="vc_phone" placeholder="+91 98xxx xxxxx" autocomplete="off">
+          </div>
+        </div>
+        <div class="row2">
+          <div class="field">
+            <label>Founder to check</label>
+            <input id="founder_name" placeholder="Founder's full name" autocomplete="off">
+          </div>
+          <div class="field">
+            <label>Company <span style="font-weight:500;color:var(--faint)">(optional)</span></label>
+            <input id="founder_company" placeholder="Company" autocomplete="off">
+          </div>
+        </div>
+        <div style="margin-top:18px"><span class="mode-tag">call mode&nbsp;<b id="modeTag">…</b></span></div>
+        <button class="btn block" id="go" type="submit">Verify founder</button>
+      </div>
+    </form>
+  </section>
+
+  <!-- ============ SCREEN 2 : LIVE RUN ============ -->
+  <section id="live" class="screen">
+    <p class="closenote">You can close this tab &mdash; the run keeps going. Come back to this link any time.</p>
+    <div class="err" id="liveErr"><div id="liveErrMsg"></div>
+      <button class="btn ghost" type="button" id="startOver">Start over</button></div>
+    <div class="banner" id="banner"><span class="ring"></span><span id="bannerText"></span></div>
+    <div class="card"><div class="timeline" id="timeline"></div></div>
+  </section>
+
+  <!-- ============ SCREEN 3 : RESULT ============ -->
+  <section id="result" class="screen">
+    <div class="card" id="resultCard"></div>
+  </section>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const screens = {start:$('#start'), live:$('#live'), result:$('#result')};
+function show(name){ for(const k in screens) screens[k].classList.toggle('active', k===name); window.scrollTo({top:0,behavior:'smooth'}); }
+function toast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(toast._t); toast._t=setTimeout(()=>t.classList.remove('show'),Math.max(1900,String(msg).length*60)); }
+const esc = s => (s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+let es = null, RESULT = null, resultShown = false;
+
+// ---- fetch call mode for the tag ----
+const GO_LABEL = 'Verify founder';
+// optional access token: open the app as /?token=... once; kept for this tab only
+(function(){ const t=new URLSearchParams(location.search).get('token'); if(t){ sessionStorage.setItem('bc_token',t); } })();
+fetch('/healthz').then(r=>r.json()).then(d=>{
+  const mode = d.call_mode || 'mock';
+  $('#modeTag').textContent = mode==='live' ? 'live' : 'mock · simulated call';
+  const df = d.defaults || {};
+  for(const k of ['vc_name','founder_name','founder_company']){ const el=$('#'+k); if(el && !el.value && df[k]) el.value=df[k]; }
+}).catch(()=>{ $('#modeTag').textContent='mock · simulated call'; });
+function newKey(){
+  // crypto.randomUUID only exists in secure contexts (https / localhost)
+  if(window.crypto && crypto.randomUUID) return crypto.randomUUID();
+  return Date.now().toString(36)+'-'+Math.random().toString(36).slice(2)+Math.random().toString(36).slice(2);
+}
+function resetStart(){
+  if(es){ es.close(); es=null; }
+  RESULT=null; resultShown=false;
+  const btn=$('#go'); btn.disabled=false; btn.textContent=GO_LABEL;
+  $('#liveErr').classList.remove('show'); banner('',false);
+  if(location.hash) history.replaceState(null,'',location.pathname+location.search);
+  show('start');
+}
+$('#startOver').addEventListener('click', resetStart);
+
+// ---- routing: a run_id in the hash means "reconnect", not a fresh start ----
+function currentRunId(){ const h=location.hash.replace(/^#/,''); return h || null; }
+window.addEventListener('load', ()=>{
+  const rid = currentRunId();
+  if(rid){ show('live'); connect(rid); } else { show('start'); }
+});
+window.addEventListener('hashchange', ()=>{ const rid=currentRunId(); if(!rid){ resetStart(); } else { show('live'); connect(rid); } });
+
+// ---- start a run ----
+$('#form').addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  const btn=$('#go'); btn.disabled=true; btn.textContent='Starting…';
+  const inputs={ vc_name:$('#vc_name').value, vc_phone:$('#vc_phone').value,
+                 founder_name:$('#founder_name').value, founder_company:$('#founder_company').value,
+                 idempotency_key:newKey(), demo_token:sessionStorage.getItem('bc_token')||undefined };
+  try{
+    let r;
+    try{ r = await fetch('/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(inputs)}); }
+    catch(_){ throw new Error("Couldn't reach the server. Check the connection and try again."); }
+    let d={}; try{ d=await r.json(); }catch(_){}
+    if(!r.ok){ throw new Error(d.detail||'The server had a problem starting the check. Try again.'); }
+    resultShown=false; RESULT=null;
+    history.pushState(null,'','#'+d.run_id);   // refresh-safe: reconnect by id, never re-POST (no hashchange fired)
+    show('live'); connect(d.run_id);
+  }catch(err){ toast(err.message); btn.disabled=false; btn.textContent=GO_LABEL; }
+});
+
+// ---- SSE: snapshot repaints everything, then live events stream in ----
+function connect(runId){
+  if(es) es.close();
+  $('#timeline').innerHTML=''; $('#liveErr').classList.remove('show'); $('.closenote').style.display='';
+  es = new EventSource('/run/'+runId+'/events');
+  es.onmessage = (e)=>{ let m; try{ m=JSON.parse(e.data); }catch{ return; } dispatch(m); };
+  es.onerror = ()=>{
+    // EventSource auto-retries network blips; a hard failure (404/502) closes it.
+    if(!es || es.readyState!==EventSource.CLOSED || currentRunId()!==runId) return;
+    fetch('/run/'+runId).then(r=>{
+      if(r.status===404){ showErr("This check doesn't exist on the server any more."); return; }
+      setTimeout(()=>{ if(currentRunId()===runId) connect(runId); }, 1500);
+    }).catch(()=>setTimeout(()=>{ if(currentRunId()===runId) connect(runId); }, 3000));
+  };
+}
+function dispatch(m){
+  if(m.type==='snapshot') renderSnapshot(m.run);
+  else if(m.type==='step') updateStep(m);
+  else if(m.type==='transcript') renderTranscript(m.turns, true);
+  else if(m.type==='banner') banner(m.text, m.active);
+  else if(m.type==='done'){ RESULT=m.result; maybeShowResult(); }
+  else if(m.type==='error'){ showErr(m.error); }
+  else if(m.type==='end'){ if(es){ es.close(); es=null; } }
+}
+
+// ---- timeline rendering ----
+const STEP_ROW = {};  // step -> element
+function renderSnapshot(run){
+  $('#timeline').innerHTML=''; Object.keys(STEP_ROW).forEach(k=>delete STEP_ROW[k]);
+  banner('',false);
+  (run.steps||[]).forEach(s=>{ $('#timeline').appendChild(rowEl(s)); });
+  (run.steps||[]).forEach(s=>{
+    paint(s.step, s.status, s.label, s.result, s.phase2);
+    if(s.step==='call_reference' && s.result && s.result.turns && s.result.turns.length){
+      renderTranscript(s.result.turns, false);
+    }
+    if(s.step==='call_reference' && s.status==='active' && s.result){
+      const sim = s.result.simulated ? ' · simulated call' : '';
+      if(s.result.connected) banner('Connected to '+(s.result.referee||'the reference')+sim, true);
+      else if(s.result.ringing) banner('📞 Ringing '+(s.result.referee||'the reference')+'…'+(s.result.simulated?' (simulated)':''), true);
+    }
+  });
+  if(run.status==='error'){ showErr(run.error||'Run failed.'); }
+  if(run.status==='done' && run.result){ RESULT=run.result; maybeShowResult(); }
+}
+function rowEl(s){
+  const el=document.createElement('div'); el.className='step'; el.dataset.status=s.status; el.dataset.step=s.step;
+  el.innerHTML=`<div class="rail"><div class="dot"></div><div class="line"></div></div>
+    <div class="body"><div class="lbl"></div><div class="res"></div>
+    <div class="transcript" data-tx="${s.step}"></div></div>`;
+  STEP_ROW[s.step]=el; return el;
+}
+function updateStep(m){
+  let el=STEP_ROW[m.step];
+  if(!el){ el=rowEl({step:m.step,status:m.status}); $('#timeline').appendChild(el); }
+  paint(m.step, m.status, m.label, m.result, m.phase2);
+}
+function iconFor(status){
+  if(status==='done') return '✓';
+  if(status==='error') return '✕';
+  if(status==='active') return '<span class="sp"></span>';
+  if(status==='phase2') return '··';
+  return '○';
+}
+function paint(step, status, label, result, phase2){
+  const el=STEP_ROW[step]; if(!el) return;
+  el.dataset.status=status;
+  el.querySelector('.dot').innerHTML=iconFor(status);
+  const lbl=el.querySelector('.lbl');
+  if(label) lbl.textContent=label;
+  if(phase2 && !lbl.querySelector('.chip')) lbl.innerHTML=esc(lbl.textContent)+'<span class="chip">Phase 2</span>';
+  const res=el.querySelector('.res');
+  if(result){
+    if(status==='error' && result.error) res.textContent=result.error;
+    else if(result.summary) res.textContent=result.summary;
+    else if(result.note) res.textContent=result.note;
+    else if(result.referee && status!=='done') res.textContent=(result.connected?'On the call':'Dialing')+(result.simulated?' · simulated (mock mode)':'');
+    else if(result.n_turns) res.textContent=result.n_turns+' exchanges recorded';
+  }
+}
+function renderTranscript(turns, animate){
+  const el=document.querySelector('.transcript[data-tx="call_reference"]'); if(!el) return;
+  el.classList.add('show');
+  el.innerHTML = (turns||[]).map(t=>`
+    ${t.q?`<div class="turn q"><div class="who">Agent</div><div class="txt">${esc(t.q)}</div></div>`:''}
+    ${t.a?`<div class="turn a"><div class="who">Reference</div><div class="txt">${esc(t.a)}</div></div>`:''}`).join('');
+  if(animate) el.scrollTop=el.scrollHeight;
+}
+function banner(text, active){
+  const b=$('#banner'); b.classList.toggle('show', !!active && !!text);
+  if(text) $('#bannerText').textContent=text;
+}
+function showErr(msg){ $('#liveErrMsg').textContent='⚠ '+(msg||'Something went wrong.'); $('#liveErr').classList.add('show'); $('.closenote').style.display='none'; banner('',false); }
+
+// ---- result screen ----
+function maybeShowResult(){
+  if(!RESULT || resultShown) return;
+  resultShown=true;
+  renderResult(RESULT);
+  setTimeout(()=>show('result'), 900);  // let the final ✓ land first
+}
+function scoreBar(label, v){
+  v = (typeof v==='number')?v:0;
+  return `<div class="score"><div class="top"><span>${label}</span><span class="v">${v}</span></div>
+    <div class="bar"><i style="width:${v}%"></i></div></div>`;
+}
+function renderResult(r){
+  const ref=r.referee||{}, f=r.founder||{}, ss=r.sub_scores||{};
+  const subs = [['Credibility',ss.credibility],['Enthusiasm',ss.enthusiasm],['Claim corroboration',ss.claim_corroboration]];
+  const hasScores = subs.some(s=>typeof s[1]==='number');
+  const refName = ref.display || ref.name || [ref.title||'Former colleague', ref.company].filter(Boolean).join(' at ');
+  const sim = r.simulated ? '<span class="sim">Simulated call</span>' : '';
+  const emailTitle = r.verdict==='PASS' ? 'Draft note to the founder' : 'Draft intro email';
+  $('#resultCard').innerHTML = `
+    <div class="verdict">
+      <div class="vbadge ${esc(r.verdict)}">${esc(r.verdict)}</div>
+      <div class="vconf">${r.strength?esc(r.strength)+' signal · ':''}${esc(r.confidence)} confidence</div>
+      <div class="vrat">${esc(r.rationale)}</div>
+    </div>
+    <div class="sec">
+      <h3>The reference</h3>
+      <div class="who-line"><b>${esc(refName)}</b>${sim}
+        <div class="rel">${esc(ref.relationship||((ref.overlap_window||'')+' · '+(ref.overlap_months||0)+' months overlap'))}</div></div>
+    </div>
+    ${hasScores?`<div class="sec"><h3>Signal scores</h3><div class="scores">${subs.map(s=>scoreBar(s[0],s[1])).join('')}</div></div>`:''}
+    ${(r.highlights&&r.highlights.length)?`<div class="sec"><h3>What the reference said</h3><ul class="pts good">${r.highlights.map(h=>`<li>${esc(h)}</li>`).join('')}</ul></div>`:''}
+    ${(r.concerns&&r.concerns.length)?`<div class="sec"><h3>Watch-outs</h3><ul class="pts bad">${r.concerns.map(c=>`<li>${esc(c)}</li>`).join('')}</ul></div>`:''}
+    <div class="sec"><h3>${emailTitle}</h3><pre class="email" id="emailBox">${esc(r.intro_email)}</pre></div>
+    <div class="sec"><h3>Meeting</h3><div class="meeting"><span>📅</span><span><b>Booking lands in Phase 2.</b> ${esc((r.meeting||{}).note||'')}</span></div></div>
+    <div class="actions">
+      <button class="btn ghost" onclick="show('live')">◂ Back to timeline</button>
+      <button class="btn ghost" id="copyEmail">Copy intro email</button>
+      <button class="btn" id="newCheck">Start a new check</button>
+    </div>`;
+  $('#copyEmail').onclick=()=>{ navigator.clipboard.writeText(r.intro_email||'').then(()=>toast('Intro email copied')).catch(()=>toast('Copy failed')); };
+  $('#newCheck').onclick=resetStart;
+}
+</script>
+</body>
+</html>

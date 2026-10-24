@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en" data-theme="paper">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Backchannel — Tech Spec</title>
+<meta name="description" content="One orchestrator runs a 7-step state machine, drives 3 calls, streams every step live">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&family=Newsreader:ital,wght@0,400;0,600;1,400&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --canvas:#ece5d6; --sheet:#fbf7ee; --sheet-2:#f4eee1; --well:#e6dfcf;
+  --ink:#1f2430; --ink-2:#4a5165; --ink-3:#5f6475; --rule:#d8cfbb; --rule-strong:#b9ae95;
+  --shadow:rgba(31,36,48,.14);
+  --blue:#3b5bdb; --blue-t:#dbe4ff; --red:#e03131; --red-t:#ffe3e3; --green:#2b8a3e; --green-t:#d3f9d8;
+  --orange:#c2410c; --orange-t:#fff0d6; --purple:#7048e8; --purple-t:#e5dbff; --teal:#0b7285; --pink:#c2255c;
+  --hl:#ffe066; --green-ink:#237032; --red-ink:#c92a2a;
+  --code:#1f2430; --code-ink:#e9e3d3;
+  --hand:'Caveat',cursive; --serif:'Newsreader',Georgia,serif; --ui:'Inter',system-ui,sans-serif; --mono:'IBM Plex Mono',ui-monospace,monospace;
+  --accent:var(--orange); --accent-t:var(--orange-t);
+  color-scheme:light;
+}
+:root[data-theme="night"]{
+  --canvas:#1d1b18; --sheet:#292622; --sheet-2:#23211d; --well:#191714;
+  --ink:#ece4d4; --ink-2:#c9bfad; --ink-3:#9d9483; --rule:#3d3832; --rule-strong:#57504a;
+  --shadow:rgba(0,0,0,.35);
+  --blue:#8ea4ff; --blue-t:#27304f; --red:#ff8787; --red-t:#4a2626; --green:#69db7c; --green-t:#213a27;
+  --orange:#ffa94d; --orange-t:#4a3420; --purple:#b197fc; --purple-t:#322a4a; --teal:#66d9e8; --pink:#f783ac;
+  --hl:#8a7a2a; --green-ink:#69db7c; --red-ink:#ff8787; --code:#141310; --code-ink:#e9e3d3;
+  color-scheme:dark;
+}
+@media (prefers-color-scheme:dark){ :root:not([data-theme="paper"]){
+  --canvas:#1d1b18; --sheet:#292622; --sheet-2:#23211d; --well:#191714;
+  --ink:#ece4d4; --ink-2:#c9bfad; --ink-3:#9d9483; --rule:#3d3832; --rule-strong:#57504a;
+  --shadow:rgba(0,0,0,.35);
+  --blue:#8ea4ff; --blue-t:#27304f; --red:#ff8787; --red-t:#4a2626; --green:#69db7c; --green-t:#213a27;
+  --orange:#ffa94d; --orange-t:#4a3420; --purple:#b197fc; --purple-t:#322a4a; --teal:#66d9e8; --pink:#f783ac;
+  --hl:#8a7a2a; --green-ink:#69db7c; --red-ink:#ff8787; --code:#141310; --code-ink:#e9e3d3;
+  color-scheme:dark;
+} }
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%;scroll-behavior:smooth}
+body{margin:0;background:var(--canvas);color:var(--ink);font:16.5px/1.65 var(--ui);overflow-x:hidden;-webkit-font-smoothing:antialiased}
+a{color:var(--accent);text-underline-offset:3px}
+.wrap{max-width:820px;margin:0 auto;padding:0 20px 90px}
+.topbar{position:sticky;top:0;z-index:50;background:color-mix(in srgb,var(--canvas) 88%,transparent);backdrop-filter:blur(8px);border-bottom:1.5px solid var(--rule)}
+.topbar .in{max-width:820px;margin:0 auto;padding:0 20px;display:flex;align-items:center;gap:12px;height:58px}
+.logo{display:flex;align-items:center;gap:9px;font:700 24px/1 var(--hand);color:var(--ink);white-space:nowrap}
+.logo i{font-style:normal;display:grid;place-items:center;width:32px;height:32px;border:2.5px solid var(--ink);border-radius:50%;font-size:15px;transform:rotate(-8deg);background:var(--hl);color:#1f2430}
+.spacer{flex:1}
+.theme-btn{border:1.5px solid var(--rule-strong);background:var(--sheet);border-radius:999px;padding:7px 13px;font:600 13px var(--ui);color:var(--ink-2);cursor:pointer;min-height:40px}
+header.doc{padding:44px 0 6px}
+.kicker{font:600 12.5px/1.2 var(--mono);letter-spacing:.18em;text-transform:uppercase;color:var(--ink-3);margin:0 0 14px}
+h1.title{font-family:var(--hand);font-weight:700;font-size:clamp(46px,8.5vw,86px);line-height:.98;letter-spacing:-.5px;margin:0 0 14px}
+.lede{font:400 clamp(19px,2.4vw,23px)/1.5 var(--serif);color:var(--ink-2);margin:0 0 10px;max-width:40em}
+.meta{font:600 13px/1.5 var(--mono);color:var(--ink-3);margin:6px 0 0}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin:26px 0 8px}
+.stat{padding:16px 18px}
+.stat b{display:block;font:700 clamp(30px,5vw,40px)/1 var(--hand);color:var(--accent)}
+.stat span{display:block;font:600 12.5px var(--mono);text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);margin-top:7px}
+.stat small{display:block;font:400 14px/1.4 var(--serif);color:var(--ink-2);margin-top:5px}
+.sheet{background:var(--sheet);border:2px solid var(--ink);border-radius:12px;box-shadow:5px 6px 0 var(--shadow)}
+:root[data-theme="night"] .sheet{border-color:var(--rule-strong)}
+hr.rule{border:0;border-top:2px dashed var(--rule-strong);margin:30px 0}
+article.prose{font:400 18px/1.68 var(--serif);margin-top:12px}
+article.prose h2{font:700 clamp(30px,5vw,44px)/1.05 var(--hand);margin:46px 0 4px;padding-top:22px;border-top:2.5px solid var(--ink)}
+article.prose h3{font:700 clamp(22px,3.6vw,28px)/1.15 var(--hand);color:var(--accent);margin:26px 0 2px}
+article.prose h4{font:700 14px var(--mono);text-transform:uppercase;letter-spacing:.05em;color:var(--ink-2);margin:20px 0 2px}
+article.prose p{margin:.7em 0}
+article.prose strong,article.prose b{font-weight:600;color:var(--ink)}
+article.prose em{font-style:italic}
+article.prose ul,article.prose ol{margin:.6em 0;padding-left:1.3em}
+article.prose li{margin:.4em 0}
+article.prose li::marker{color:var(--accent)}
+blockquote.note{margin:18px 0;padding:12px 16px;border-left:4px solid var(--accent);background:var(--sheet-2);border-radius:0 10px 10px 0;font:400 16.5px/1.6 var(--ui);color:var(--ink-2)}
+blockquote.note p{margin:.3em 0}
+.tag{display:inline-block;font:700 11px/1 var(--mono);text-transform:uppercase;letter-spacing:.04em;padding:3px 7px;border-radius:6px;vertical-align:1px;white-space:nowrap}
+.tag.ok{background:var(--green-t);color:var(--green-ink)}
+.tag.warn{background:var(--orange-t);color:var(--orange)}
+article.prose code{font:600 .86em var(--mono);background:var(--well);padding:2px 6px;border-radius:5px;overflow-wrap:anywhere}
+article.prose pre{margin:14px 0;padding:14px 16px;background:var(--code);color:var(--code-ink);border-radius:12px;overflow-x:auto}
+article.prose pre code{background:none;padding:0;color:inherit;font-weight:400;font-size:14px;line-height:1.6}
+article.prose table{width:100%;border-collapse:collapse;font:15px/1.45 var(--ui);margin:16px 0}
+article.prose th,article.prose td{border-bottom:1.5px dashed var(--rule);padding:9px 8px;text-align:left;vertical-align:top}
+article.prose th{font:700 12.5px var(--mono);text-transform:uppercase;letter-spacing:.04em;color:var(--ink-3)}
+article.prose tr:last-child td{border-bottom:none}
+.mark{background:linear-gradient(104deg,transparent 2%,var(--hl) 4%,var(--hl) 94%,transparent 97%);padding:0 .25em;border-radius:3px;color:#1f2430}
+article.prose hr{border:0;border-top:2px dashed var(--rule-strong);margin:34px 0}
+article.prose > p:last-of-type em,article.prose em:last-child{color:var(--ink-3)}
+footer.site{border-top:1.5px solid var(--rule);margin-top:60px;padding:24px 0 10px;color:var(--ink-3);font:400 13.5px/1.5 var(--mono)}
+@media (max-width:480px){ .logo{font-size:21px} header.doc{padding:32px 0 4px} }
+</style>
+</head>
+<body>
+<div class="topbar"><div class="in">
+  <span class="logo"><i>✦</i>SEE THE SYSTEM</span>
+  <span class="spacer"></span>
+  <button class="theme-btn" id="tt" aria-label="Toggle theme">◐ Theme</button>
+</div></div>
+<div class="wrap">
+<header class="doc">
+  <p class="kicker">ContextCon demo · pipeline / architecture</p>
+  <h1 class="title">Backchannel — Tech Spec</h1>
+  <p class="lede">One orchestrator runs a 7-step state machine, drives 3 calls, streams every step live</p>
+  <p class="meta">Caren · 2026-10-24</p>
+</header>
+<div class="stats"><div class="stat sheet"><b>7</b><span>steps · 3 calls · 1 orchestrator</span></div></div>
+<hr class="rule">
+<article class="prose">
+<p><strong>What it is:</strong> one backend <strong>orchestrator</strong> that runs the job as a step-by-step state machine, drives 3 phone calls, and streams every step to the UI live.</p>
+<pre><code>Browser (UI)  ⇄  Orchestrator API (FastAPI)  →  Crustdata · Bolna · AI Gateway
+   │  POST /run  (start)                            (data)   (calls)  (Haiku+Jev)
+   └─ GET /run/{id}/events  (SSE live stream)
+</code></pre>
+<hr />
+<h2>The pipeline (a state machine — one step = one timeline row)</h2>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Step</th>
+<th>What it does</th>
+<th>Tech</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><strong>resolve_founder</strong></td>
+<td>name (+company) → profile + dated work history</td>
+<td>Crustdata <code>person/search</code> → <code>person/enrich</code></td>
+</tr>
+<tr>
+<td>2</td>
+<td><strong>find_references</strong></td>
+<td>ex-colleagues per past employer → rank by overlap → top 1</td>
+<td>Crustdata <code>person/search</code> + <code>overlap.py</code></td>
+</tr>
+<tr>
+<td>3</td>
+<td><strong>call_reference</strong></td>
+<td>call the ref, verify the founder, ask diligence Qs</td>
+<td>Bolna <code>POST /call</code> → poll → transcript</td>
+</tr>
+<tr>
+<td>4</td>
+<td><strong>synthesize_signal</strong></td>
+<td>transcript → verdict + scores</td>
+<td>Gateway: Haiku (write) + Jev (score)</td>
+</tr>
+<tr>
+<td>5</td>
+<td><strong>call_vc</strong></td>
+<td>call the VC: deliver signal, ask &ldquo;when are you free?&rdquo;</td>
+<td>Bolna call → transcript → Haiku extracts <strong>VC slots</strong></td>
+</tr>
+<tr>
+<td>6</td>
+<td><strong>call_founder</strong></td>
+<td>call founder: &ldquo;a VC wants to fund you&rdquo;, get availability, confirm a slot</td>
+<td>Bolna call → transcript → Haiku extracts <strong>confirmed time</strong></td>
+</tr>
+<tr>
+<td>7</td>
+<td><strong>done</strong></td>
+<td>result: verdict + booked time + draft intro email</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<p>Each step emits an event <strong>on start</strong> (<code>active</code>) and <strong>on finish</strong> (<code>done</code> + result payload).</p>
+<hr />
+<h2>The 3 key mechanisms</h2>
+<p><strong>1. Dynamic call context.</strong> One Bolna agent per role (reference / VC / founder), or one agent + per-call variables. Each <code>POST /call</code> passes the specifics — founder name, the questions, the VC&rsquo;s slots — as call-level variables that fill <code>{{placeholders}}</code> in the agent prompt. <em>(Confirm Bolna&rsquo;s variable field name when wiring; fallback = per-call prompt override.)</em></p>
+<p><strong>2. Transcript → structured data (the glue between calls).</strong> After each call, Haiku parses the transcript to pull exactly what the next step needs:</p>
+<ul>
+<li>after call 3 (ref) → the <strong>signal</strong> (strengths, concerns, would-back)</li>
+<li>after call 5 (VC) → the <strong>available slots</strong> (&ldquo;Thursday or Friday afternoon&rdquo;)</li>
+<li>after call 6 (founder) → the <strong>confirmed time</strong></li>
+</ul>
+<p><strong>3. Live updates.</strong> Orchestrator keeps a run record <code>{run_id: {steps[], status}}</code>. Every step change is pushed to an <strong>SSE</strong> stream the UI subscribes to (1s polling fallback). Record persists (SQLite) so if the VC leaves and returns, the page resumes where it is. Calls are <strong>fire-and-poll</strong> — trigger, then <code>GET /executions/{id}</code> every ~3–5s until finalized.</p>
+<hr />
+<h2>Stack</h2>
+<ul>
+<li><strong>Backend:</strong> Python + FastAPI (async), SSE for live events.</li>
+<li><strong>Data:</strong> Crustdata REST (served from cache while the cap is capped).</li>
+<li><strong>Voice:</strong> Bolna REST — the 3 calls.</li>
+<li><strong>AI:</strong> our Vercel AI Gateway — <strong>Haiku</strong> (generate/extract) + <strong>Jev</strong> (score).</li>
+<li><strong>State:</strong> SQLite (or in-memory for the demo).</li>
+<li><strong>Frontend:</strong> minimal — Next.js or plain HTML+JS hitting <code>POST /run</code> + the SSE stream.</li>
+</ul>
+<h2>Reuse (already built + proven)</h2>
+<p><code>crust.py</code> · <code>overlap.py</code> · <code>report.py</code> (synthesis) · <code>gateway.py</code> — from the spike. The orchestrator wraps these and adds the Bolna calls + the VC/founder legs + SSE. <strong>The Crustdata→call→transcript→verdict chain is already proven on a real +91 call.</strong></p>
+<hr />
+<h2>Demo scope / stubs</h2>
+<ul>
+<li>Crustdata cap not lifted → run from the <strong>warm cache</strong> (one pre-cached founder).</li>
+<li>All 3 numbers = <strong>controlled + verified</strong> in Bolna.</li>
+<li>Calendar invite = optional; the verbal confirm on the calls is the core.</li>
+<li>Out: ref-doesn&rsquo;t-know-founder retries, multi-ref, multi-founder, auth.</li>
+</ul>
+<h2>Build order</h2>
+<ol>
+<li><strong>Orchestrator skeleton + SSE + the Start→timeline UI</strong> (fake events first) → proves the live view.</li>
+<li>Plug in <strong>steps 1–2</strong> (Crustdata discovery — already built).</li>
+<li>Wire <strong>call 1</strong> (reference → transcript → synthesis — already proven).</li>
+<li>Wire <strong>call 2</strong> (VC) + slot extraction.</li>
+<li>Wire <strong>call 3</strong> (founder) + confirm.</li>
+<li><strong>Result screen</strong> + polish.</li>
+</ol>
+<p>Ship step 1–3 first = a working, demo-able core. 4–6 = the full wow.</p>
+</article>
+<footer class="site">Field-notebook report · rendered SEE THE SYSTEM.</footer>
+</div>
+<script>
+(function(){
+  var r=document.documentElement, b=document.getElementById('tt');
+  try{var s=localStorage.getItem('nb-theme'); if(s) r.setAttribute('data-theme',s);}catch(e){}
+  b.addEventListener('click',function(){
+    var cur=r.getAttribute('data-theme')==='night'?'paper':'night';
+    r.setAttribute('data-theme',cur);
+    try{localStorage.setItem('nb-theme',cur);}catch(e){}
+  });
+})();
+</script>
+</body></html>

@@ -1,0 +1,22 @@
+# API responses cached to disk — may contain profile data, never commit
+.cache/
+
+# never commit secrets
+*.env*
+*.env
+.env.local
+.crustdata.env
+.env
+
+# durable run state (SQLite) — demo run records, never commit
+.state/
+*.db
+*.db-wal
+*.db-shm
+
+# python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/

@@ -1,0 +1,26 @@
+{
+  "_note": "Pre-saved report used ONLY in mock mode when live synthesis (Haiku + Jev) is slow or fails. Shape and scores mirror a real good run on the fictional sample transcript; the content is generic and contains no names. Referee/candidate identity is filled in at runtime.",
+  "claims_confirmed": [
+    "Owned the regional customer success book end to end",
+    "Grew the book from a small set of enterprise accounts into a substantial one",
+    "Was promoted from CSM to a lead role during the overlap",
+    "Co-owned several of the larger renewals with the referee"
+  ],
+  "strengths": [
+    "Calm and effective in high-risk churn situations",
+    "Gets to the core problem in an account quickly",
+    "Returns with a concrete plan the same day",
+    "Mentors newer team members without being asked"
+  ],
+  "concerns": [
+    "Tends to take on too much personally rather than delegating",
+    "Can be impatient with slow internal processes"
+  ],
+  "recommendation": {
+    "tier": "HIRE",
+    "verdict": "HIRE",
+    "confidence": "medium",
+    "rationale": "A well-positioned ex-colleague with long, direct overlap confirmed specific ownership claims and would work with them again without hesitation; one off-list source plus a noted delegation habit supports a confident, but not top-tier, recommendation."
+  },
+  "sub_scores": {"credibility": 98, "enthusiasm": 99, "claim_corroboration": 76}
+}

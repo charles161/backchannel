@@ -1,0 +1,48 @@
+{
+  "candidate_name": "Jordan Avery",
+  "fictional": true,
+  "call_date": "2026-10-23",
+  "duration_min": 18,
+  "channel": "phone (simulated — mock mode)",
+  "note": "FICTIONAL sample of an off-list reference call, used by mock mode and the CLI. No real person said any of this. '{first_name}' is replaced at runtime with the first name of the founder being checked; the answers are a scripted simulation, labelled as such in the UI.",
+  "qa": [
+    {
+      "q": "How did you work with {first_name}, and for how long?",
+      "a": "We were in the customer success org together for a couple of years. I sat one team over, so I saw how they ran their book day to day, and we co-owned a few of the bigger renewals."
+    },
+    {
+      "q": "What stood out about how {first_name} operated?",
+      "a": "They were the person you wanted in the room when an account was about to churn. Calm, got to the actual problem fast, and came back with a plan the same day. They also mentored the newer CSMs without anyone asking."
+    },
+    {
+      "q": "Can you confirm what {first_name} actually owned?",
+      "a": "Yes. They owned the regional customer success book end to end and grew it from a small set of enterprise accounts into something substantial. They were promoted from CSM to a lead role in that same stretch, and it was earned."
+    },
+    {
+      "q": "Anywhere they struggled, or something you'd push back on?",
+      "a": "They tended to take on a lot themselves instead of delegating, which works until it doesn't. And they could be impatient with slow internal processes. Nothing disqualifying, but worth knowing going in."
+    },
+    {
+      "q": "Would you work with {first_name} again?",
+      "a": "Without hesitation. If I were starting something, I'd try to hire them."
+    }
+  ],
+  "signals": {
+    "confirmed_claims": [
+      "Owned the regional customer success book end-to-end",
+      "Grew the book from a small set of enterprise accounts",
+      "Promoted from CSM to a Customer Success Lead role in the same org"
+    ],
+    "strengths": [
+      "De-escalates churn-risk accounts quickly and calmly",
+      "Comes back with a concrete plan the same day",
+      "Mentored junior CSMs unprompted"
+    ],
+    "concerns": [
+      "Tends to take on a lot personally rather than delegating",
+      "Can be impatient with slow internal processes"
+    ],
+    "would_rehire": true,
+    "overall_sentiment": "strong_positive"
+  }
+}

@@ -1,0 +1,129 @@
+"""
+bolna.py — thin Bolna voice-call client for Backchannel (Phase 1).
+
+Only what the orchestrator needs:
+  * place_call(agent_id, phone)      -> {"status","execution_id", ...}
+  * get_execution(execution_id)      -> {"status","transcript", ...}
+  * parse_transcript(flat_string)    -> {"qa":[{"q","a"}, ...]}
+
+The API key is read from the environment ONLY (BOLNA_API_KEY) — never hardcoded,
+never logged. Source your Bolna env file (default ~/.bolna.env) before running.
+
+Proven on a real +91 call:
+  POST https://api.bolna.ai/call        body {agent_id, recipient_phone_number}
+  GET  https://api.bolna.ai/executions/{execution_id}
+Both take header  Authorization: Bearer $BOLNA_API_KEY
+"""
+
+from __future__ import annotations
+
+import os
+import re
+from typing import Any
+
+import requests
+
+BASE_URL = "https://api.bolna.ai"
+# The pre-created "reference-checker" agent (gpt-4o-mini + alloy TTS + nova-2).
+DEFAULT_AGENT_ID = "8570f965-a837-472b-9f6d-215ef5200162"
+
+
+class BolnaError(RuntimeError):
+    """Raised on a bad Bolna response (the key is never attached)."""
+
+
+def _headers() -> dict[str, str]:
+    key = os.environ.get("BOLNA_API_KEY")
+    if not key:
+        raise BolnaError(
+            "BOLNA_API_KEY not set. Run:  source ~/.bolna.env"
+        )
+    return {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+
+
+def place_call(agent_id: str, phone: str, *, timeout: int = 30) -> dict[str, Any]:
+    """POST /call — trigger a real outbound call. Returns {status, execution_id, ...}."""
+    body = {"agent_id": agent_id, "recipient_phone_number": phone}
+    try:
+        resp = requests.post(
+            f"{BASE_URL}/call", headers=_headers(), json=body, timeout=timeout
+        )
+    except requests.RequestException as e:
+        raise BolnaError(f"Bolna /call unreachable: {e}") from None
+    if resp.status_code not in (200, 201):
+        raise BolnaError(f"Bolna /call -> HTTP {resp.status_code}: {resp.text[:300]}")
+    return resp.json()
+
+
+def get_execution(execution_id: str, *, timeout: int = 30) -> dict[str, Any]:
+    """GET /executions/{id} — poll call status + transcript."""
+    try:
+        resp = requests.get(
+            f"{BASE_URL}/executions/{execution_id}", headers=_headers(), timeout=timeout
+        )
+    except requests.RequestException as e:
+        raise BolnaError(f"Bolna /executions unreachable: {e}") from None
+    if resp.status_code != 200:
+        raise BolnaError(
+            f"Bolna /executions/{execution_id} -> HTTP {resp.status_code}: {resp.text[:300]}"
+        )
+    return resp.json()
+
+
+_ROLE_RE = re.compile(
+    r"^(assistant|agent|ai|bot|user|human|caller|customer)\s*[:\-]\s*(.*)$", re.I
+)
+_ASSISTANT_ROLES = {"assistant", "agent", "ai", "bot"}
+
+
+def parse_transcript(flat: str | None) -> dict[str, list[dict[str, str]]]:
+    """Parse Bolna's flat transcript string into {"qa":[{"q","a"}, ...]}.
+
+    Bolna returns turns like:  "assistant: Hi ...\nuser: Yeah ...\nassistant: ...".
+    An assistant line is a question (q); the following user line is its answer (a).
+    Multi-line turns and consecutive same-role lines are merged. Robust to a
+    leading user greeting or a trailing assistant line.
+    """
+    if not flat or not str(flat).strip():
+        return {"qa": []}
+
+    # 1) split into (role, text) segments, folding continuation lines.
+    segs: list[list[str]] = []
+    for line in str(flat).splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        m = _ROLE_RE.match(line)
+        if m:
+            role = "assistant" if m.group(1).lower() in _ASSISTANT_ROLES else "user"
+            segs.append([role, m.group(2).strip()])
+        elif segs:
+            segs[-1][1] = (segs[-1][1] + " " + line).strip()
+
+    # 2) merge consecutive same-role segments into one turn.
+    merged: list[list[str]] = []
+    for role, text in segs:
+        if merged and merged[-1][0] == role:
+            merged[-1][1] = (merged[-1][1] + " " + text).strip()
+        else:
+            merged.append([role, text])
+
+    # 3) pair assistant(q) -> user(a).
+    qa: list[dict[str, str]] = []
+    i = 0
+    while i < len(merged):
+        role, text = merged[i]
+        if role == "assistant":
+            answer = ""
+            if i + 1 < len(merged) and merged[i + 1][0] == "user":
+                answer = merged[i + 1][1]
+                i += 2
+            else:
+                i += 1
+            qa.append({"q": text, "a": answer})
+        else:
+            # user turn with no preceding assistant (e.g. the pickup greeting)
+            qa.append({"q": "", "a": text})
+            i += 1
+
+    return {"qa": [t for t in qa if t["q"] or t["a"]]}

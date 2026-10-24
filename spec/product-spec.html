@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en" data-theme="paper">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Backchannel — Product Spec</title>
+<meta name="description" content="Agent verifies a founder, calls the VC, then calls the founder and schedules the meeting — 3 live calls, no one in the loop">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&family=Newsreader:ital,wght@0,400;0,600;1,400&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --canvas:#ece5d6; --sheet:#fbf7ee; --sheet-2:#f4eee1; --well:#e6dfcf;
+  --ink:#1f2430; --ink-2:#4a5165; --ink-3:#5f6475; --rule:#d8cfbb; --rule-strong:#b9ae95;
+  --shadow:rgba(31,36,48,.14);
+  --blue:#3b5bdb; --blue-t:#dbe4ff; --red:#e03131; --red-t:#ffe3e3; --green:#2b8a3e; --green-t:#d3f9d8;
+  --orange:#c2410c; --orange-t:#fff0d6; --purple:#7048e8; --purple-t:#e5dbff; --teal:#0b7285; --pink:#c2255c;
+  --hl:#ffe066; --green-ink:#237032; --red-ink:#c92a2a;
+  --code:#1f2430; --code-ink:#e9e3d3;
+  --hand:'Caveat',cursive; --serif:'Newsreader',Georgia,serif; --ui:'Inter',system-ui,sans-serif; --mono:'IBM Plex Mono',ui-monospace,monospace;
+  --accent:var(--green); --accent-t:var(--green-t);
+  color-scheme:light;
+}
+:root[data-theme="night"]{
+  --canvas:#1d1b18; --sheet:#292622; --sheet-2:#23211d; --well:#191714;
+  --ink:#ece4d4; --ink-2:#c9bfad; --ink-3:#9d9483; --rule:#3d3832; --rule-strong:#57504a;
+  --shadow:rgba(0,0,0,.35);
+  --blue:#8ea4ff; --blue-t:#27304f; --red:#ff8787; --red-t:#4a2626; --green:#69db7c; --green-t:#213a27;
+  --orange:#ffa94d; --orange-t:#4a3420; --purple:#b197fc; --purple-t:#322a4a; --teal:#66d9e8; --pink:#f783ac;
+  --hl:#8a7a2a; --green-ink:#69db7c; --red-ink:#ff8787; --code:#141310; --code-ink:#e9e3d3;
+  color-scheme:dark;
+}
+@media (prefers-color-scheme:dark){ :root:not([data-theme="paper"]){
+  --canvas:#1d1b18; --sheet:#292622; --sheet-2:#23211d; --well:#191714;
+  --ink:#ece4d4; --ink-2:#c9bfad; --ink-3:#9d9483; --rule:#3d3832; --rule-strong:#57504a;
+  --shadow:rgba(0,0,0,.35);
+  --blue:#8ea4ff; --blue-t:#27304f; --red:#ff8787; --red-t:#4a2626; --green:#69db7c; --green-t:#213a27;
+  --orange:#ffa94d; --orange-t:#4a3420; --purple:#b197fc; --purple-t:#322a4a; --teal:#66d9e8; --pink:#f783ac;
+  --hl:#8a7a2a; --green-ink:#69db7c; --red-ink:#ff8787; --code:#141310; --code-ink:#e9e3d3;
+  color-scheme:dark;
+} }
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%;scroll-behavior:smooth}
+body{margin:0;background:var(--canvas);color:var(--ink);font:16.5px/1.65 var(--ui);overflow-x:hidden;-webkit-font-smoothing:antialiased}
+a{color:var(--accent);text-underline-offset:3px}
+.wrap{max-width:820px;margin:0 auto;padding:0 20px 90px}
+.topbar{position:sticky;top:0;z-index:50;background:color-mix(in srgb,var(--canvas) 88%,transparent);backdrop-filter:blur(8px);border-bottom:1.5px solid var(--rule)}
+.topbar .in{max-width:820px;margin:0 auto;padding:0 20px;display:flex;align-items:center;gap:12px;height:58px}
+.logo{display:flex;align-items:center;gap:9px;font:700 24px/1 var(--hand);color:var(--ink);white-space:nowrap}
+.logo i{font-style:normal;display:grid;place-items:center;width:32px;height:32px;border:2.5px solid var(--ink);border-radius:50%;font-size:15px;transform:rotate(-8deg);background:var(--hl);color:#1f2430}
+.spacer{flex:1}
+.theme-btn{border:1.5px solid var(--rule-strong);background:var(--sheet);border-radius:999px;padding:7px 13px;font:600 13px var(--ui);color:var(--ink-2);cursor:pointer;min-height:40px}
+header.doc{padding:44px 0 6px}
+.kicker{font:600 12.5px/1.2 var(--mono);letter-spacing:.18em;text-transform:uppercase;color:var(--ink-3);margin:0 0 14px}
+h1.title{font-family:var(--hand);font-weight:700;font-size:clamp(46px,8.5vw,86px);line-height:.98;letter-spacing:-.5px;margin:0 0 14px}
+.lede{font:400 clamp(19px,2.4vw,23px)/1.5 var(--serif);color:var(--ink-2);margin:0 0 10px;max-width:40em}
+.meta{font:600 13px/1.5 var(--mono);color:var(--ink-3);margin:6px 0 0}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin:26px 0 8px}
+.stat{padding:16px 18px}
+.stat b{display:block;font:700 clamp(30px,5vw,40px)/1 var(--hand);color:var(--accent)}
+.stat span{display:block;font:600 12.5px var(--mono);text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);margin-top:7px}
+.stat small{display:block;font:400 14px/1.4 var(--serif);color:var(--ink-2);margin-top:5px}
+.sheet{background:var(--sheet);border:2px solid var(--ink);border-radius:12px;box-shadow:5px 6px 0 var(--shadow)}
+:root[data-theme="night"] .sheet{border-color:var(--rule-strong)}
+hr.rule{border:0;border-top:2px dashed var(--rule-strong);margin:30px 0}
+article.prose{font:400 18px/1.68 var(--serif);margin-top:12px}
+article.prose h2{font:700 clamp(30px,5vw,44px)/1.05 var(--hand);margin:46px 0 4px;padding-top:22px;border-top:2.5px solid var(--ink)}
+article.prose h3{font:700 clamp(22px,3.6vw,28px)/1.15 var(--hand);color:var(--accent);margin:26px 0 2px}
+article.prose h4{font:700 14px var(--mono);text-transform:uppercase;letter-spacing:.05em;color:var(--ink-2);margin:20px 0 2px}
+article.prose p{margin:.7em 0}
+article.prose strong,article.prose b{font-weight:600;color:var(--ink)}
+article.prose em{font-style:italic}
+article.prose ul,article.prose ol{margin:.6em 0;padding-left:1.3em}
+article.prose li{margin:.4em 0}
+article.prose li::marker{color:var(--accent)}
+blockquote.note{margin:18px 0;padding:12px 16px;border-left:4px solid var(--accent);background:var(--sheet-2);border-radius:0 10px 10px 0;font:400 16.5px/1.6 var(--ui);color:var(--ink-2)}
+blockquote.note p{margin:.3em 0}
+.tag{display:inline-block;font:700 11px/1 var(--mono);text-transform:uppercase;letter-spacing:.04em;padding:3px 7px;border-radius:6px;vertical-align:1px;white-space:nowrap}
+.tag.ok{background:var(--green-t);color:var(--green-ink)}
+.tag.warn{background:var(--orange-t);color:var(--orange)}
+article.prose code{font:600 .86em var(--mono);background:var(--well);padding:2px 6px;border-radius:5px;overflow-wrap:anywhere}
+article.prose pre{margin:14px 0;padding:14px 16px;background:var(--code);color:var(--code-ink);border-radius:12px;overflow-x:auto}
+article.prose pre code{background:none;padding:0;color:inherit;font-weight:400;font-size:14px;line-height:1.6}
+article.prose table{width:100%;border-collapse:collapse;font:15px/1.45 var(--ui);margin:16px 0}
+article.prose th,article.prose td{border-bottom:1.5px dashed var(--rule);padding:9px 8px;text-align:left;vertical-align:top}
+article.prose th{font:700 12.5px var(--mono);text-transform:uppercase;letter-spacing:.04em;color:var(--ink-3)}
+article.prose tr:last-child td{border-bottom:none}
+.mark{background:linear-gradient(104deg,transparent 2%,var(--hl) 4%,var(--hl) 94%,transparent 97%);padding:0 .25em;border-radius:3px;color:#1f2430}
+article.prose hr{border:0;border-top:2px dashed var(--rule-strong);margin:34px 0}
+article.prose > p:last-of-type em,article.prose em:last-child{color:var(--ink-3)}
+footer.site{border-top:1.5px solid var(--rule);margin-top:60px;padding:24px 0 10px;color:var(--ink-3);font:400 13.5px/1.5 var(--mono)}
+@media (max-width:480px){ .logo{font-size:21px} header.doc{padding:32px 0 4px} }
+</style>
+</head>
+<body>
+<div class="topbar"><div class="in">
+  <span class="logo"><i>✦</i>SEE THE SYSTEM</span>
+  <span class="spacer"></span>
+  <button class="theme-btn" id="tt" aria-label="Toggle theme">◐ Theme</button>
+</div></div>
+<div class="wrap">
+<header class="doc">
+  <p class="kicker">ContextCon demo · VC founder diligence</p>
+  <h1 class="title">Backchannel — Product Spec</h1>
+  <p class="lede">Agent verifies a founder, calls the VC, then calls the founder and schedules the meeting — 3 live calls, no one in the loop</p>
+  <p class="meta">Caren · 2026-10-24 (v2)</p>
+</header>
+<div class="stats"><div class="stat sheet"><b>3</b><span>live calls · 0 humans in the loop</span></div></div>
+<hr class="rule">
+<article class="prose">
+<p><strong>One line:</strong> A VC enters a founder they&rsquo;re thinking of funding. An agent finds the founder&rsquo;s ex-colleagues, calls one to verify him, then <strong>calls the VC back</strong> with the signal — and books the meeting, live.</p>
+<p><strong>User:</strong> A busy VC doing founder diligence before writing a check.</p>
+<p><strong>The deliverable isn&rsquo;t a report. It&rsquo;s a decision + a booked meeting.</strong></p>
+<hr />
+<h2>The flow</h2>
+<p><strong>1. VC starts a check.</strong>
+Enters their <strong>name</strong>, <strong>phone number</strong>, and the <strong>founder</strong> to check. One pane per founder (can run several).</p>
+<p><strong>2. Pick the founder.</strong>
+Already has someone → type the name (or upload details/a deck). Or search and select.</p>
+<p><strong>3. VC says: &ldquo;Verify him — is this someone I should fund?&rdquo;</strong>
+Optionally uploads the founder&rsquo;s deck / claims to check against.</p>
+<p><strong>4. Agent finds the backchannel.</strong>
+Pulls the founder&rsquo;s work history (<strong>Crustdata</strong>) and finds the ex-colleagues most likely to have actually worked with him — ranked by <strong>dated overlap</strong>. Picks the <strong>top 1</strong> (keeps 2–3 in reserve).</p>
+<p><strong>5. Agent calls the reference.</strong></p>
+<ul>
+<li>Says who&rsquo;s calling and why.</li>
+<li>Checks: did they <strong>know him / work with him / see him work?</strong></li>
+<li>Based on that, asks the diligence questions — how he operates, strengths, would-you-back-him.</li>
+<li>Call ends → agent decides if the signal is enough.</li>
+</ul>
+<p><strong>6. Agent calls the VC back.</strong></p>
+<blockquote class="note">
+<p>&ldquo;We&rsquo;ve got signal on <strong>[founder]</strong> — here&rsquo;s what we heard.&rdquo; Highlights the key points + a verdict, then: <strong>&ldquo;Want to meet him? When are you free?&rdquo;</strong> — grabs the VC&rsquo;s available slots, right there on the call.</p>
+</blockquote>
+<p><strong>7. The close — the agent calls the founder and schedules it.</strong>
+The agent <strong>calls the founder</strong>: &ldquo;A VC wants to fund you and set up a meeting.&rdquo; Gets the founder&rsquo;s availability, <strong>matches it against the VC&rsquo;s slots</strong>, confirms a time to both — and the meeting is booked. (Optional: fires calendar invites.)</p>
+<p><strong>The agent does the human coordination itself — three phone calls, zero people in the loop.</strong></p>
+<hr />
+<h2>In scope for the demo — the 3-call chain</h2>
+<ul>
+<li><strong>Call 1:</strong> agent → <strong>reference</strong> (verify the founder).</li>
+<li><strong>Call 2:</strong> agent → <strong>VC</strong> (deliver signal + grab the VC&rsquo;s free slots).</li>
+<li><strong>Call 3:</strong> agent → <strong>founder</strong> (pitch the interest, get availability, confirm the meeting).</li>
+<li>One founder, happy path, end to end, fully autonomous. <em>(All 3 are controlled/known numbers for the demo.)</em></li>
+</ul>
+<h2>Out of scope (for now)</h2>
+<ul>
+<li>Reference doesn&rsquo;t know the founder → try the next one. <em>(edge case, later)</em></li>
+<li>Multiple references / parallel calls.</li>
+<li>Multiple founders at once.</li>
+</ul>
+<hr />
+<h2>How it works (stack)</h2>
+<table>
+<thead>
+<tr>
+<th>Step</th>
+<th>Tech</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Founder history + ex-colleague discovery (overlap graph)</td>
+<td><strong>Crustdata</strong></td>
+</tr>
+<tr>
+<td>The <strong>three</strong> live calls (reference · VC · founder) on real phones</td>
+<td><strong>Bolna</strong></td>
+</tr>
+<tr>
+<td>Question selection · signal synthesis · verdict · slot-matching</td>
+<td><strong>Haiku + Jev</strong> (AI gateway)</td>
+</tr>
+<tr>
+<td>Confirm the meeting</td>
+<td>Done <strong>on the calls</strong> (verbal). Optional: a calendar invite email</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>Why it wins</h2>
+<p>Every other demo hands back a document. <strong>Backchannel makes three real phone calls and schedules a meeting between two humans</strong> — reference, VC, founder — all autonomous, all live. The agent doesn&rsquo;t book via an API; it does the human coordination itself. That&rsquo;s &ldquo;the accepted offer, not a list&rdquo; — taken all the way.</p>
+</article>
+<footer class="site">Field-notebook report · rendered SEE THE SYSTEM.</footer>
+</div>
+<script>
+(function(){
+  var r=document.documentElement, b=document.getElementById('tt');
+  try{var s=localStorage.getItem('nb-theme'); if(s) r.setAttribute('data-theme',s);}catch(e){}
+  b.addEventListener('click',function(){
+    var cur=r.getAttribute('data-theme')==='night'?'paper':'night';
+    r.setAttribute('data-theme',cur);
+    try{localStorage.setItem('nb-theme',cur);}catch(e){}
+  });
+})();
+</script>
+</body></html>
