@@ -23,6 +23,21 @@ It's a single-page web app (FastAPI + SSE) with a durable, resumable run pipelin
 three phone calls, nobody in the loop. A CLI version of the discovery and synthesis
 steps is also included.
 
+## Demo
+
+Loom walkthroughs:
+
+- **Walkthrough — part 1:** https://www.loom.com/share/d3fe563ca3b44993bb74f6699acda66f
+- **Walkthrough — part 2:** https://www.loom.com/share/2e8999d327744260bcddce3b9ba75b54
+
+## Specs
+
+The product, tech and UI specs written before the build, in [`spec/`](spec/):
+
+- **Product spec** — [`spec/product-spec.md`](spec/product-spec.md) ([HTML](spec/product-spec.html))
+- **Tech spec** — [`spec/tech-spec.md`](spec/tech-spec.md) ([HTML](spec/tech-spec.html))
+- **UI spec** — [`spec/ui-spec.md`](spec/ui-spec.md) ([HTML](spec/ui-spec.html))
+
 ## What's real vs simulated
 
 | Leg | Status | How |
