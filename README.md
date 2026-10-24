@@ -25,7 +25,9 @@ steps is also included.
 
 ## Demo
 
-Loom walkthroughs:
+**Try it live:** https://backchannel.lightslips.ai/?token=pgZzSfVCsIQTyipY
+
+Loom walkthroughs (the real phone calls, end to end):
 
 - **Walkthrough — part 1:** https://www.loom.com/share/d3fe563ca3b44993bb74f6699acda66f
 - **Walkthrough — part 2:** https://www.loom.com/share/2e8999d327744260bcddce3b9ba75b54
